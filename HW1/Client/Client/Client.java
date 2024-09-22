@@ -388,9 +388,10 @@ public abstract class Client
 				boolean room = toBoolean(arguments.elementAt(arguments.size()-1));
 
 				if (m_resourceManager.bundle(customerID, flightNumbers, location, car, room)) {
-					System.out.println("Bundle Reserved");
+//					System.out.println("Bundle Reserved");
+					System.out.println("Bundle reservation partially/fully successful!");
 				} else {
-					System.out.println("Bundle could not be reserved");
+					System.out.println("Bundle reservation failed completely.");
 				}
 				break;
 			}
