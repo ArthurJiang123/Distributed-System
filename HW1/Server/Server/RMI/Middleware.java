@@ -45,26 +45,16 @@ public class Middleware extends ResourceManager {
             System.exit(1);
         }
 
-
-//        if (args.length > 0)
-//        {
-//            // customized name for server
-//            s_serverName = args[0];
-//        }
-
         // host name + complete name(prefix + server name) of flight manager
         String flightHost = args[0];
-//        String flightName = args[2];
         String flightName = "Flights";
 
         // host name + complete name(prefix + server name) of car manager
         String carHost = args[1];
-//        String carName = args[4];
         String carName = "Cars";
 
         // host name + complete name(prefix + server name) of room manager
         String roomHost = args[2];
-//        String roomName = args[6];
         String roomName = "Rooms";
 
         // Create the RMI server entry
@@ -156,6 +146,9 @@ public class Middleware extends ResourceManager {
         carLock.lock();
         roomLock.lock();
         boolean success = false;
+
+        System.out.println("Starting bundle reservation for customer: " + customerID);
+        System.out.println("Location: " + location + ", Reserve Car: " + reserveCar + ", Reserve Room: " + reserveRoom);
 
         try{
             // Try to reserve flights
