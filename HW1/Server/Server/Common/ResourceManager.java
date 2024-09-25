@@ -9,43 +9,69 @@ import Server.Interface.*;
 
 import java.util.*;
 import java.rmi.RemoteException;
-import java.io.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class ResourceManager implements IResourceManager
 {
 	protected String m_name = "";
 	protected RMHashMap m_data = new RMHashMap();
 
+	// lock per resource
+	// for each resource, we compute a lock
+	private final HashMap<String, ReentrantLock> resourceLocks = new HashMap<>();
+
+
 	public ResourceManager(String p_name)
 	{
 		m_name = p_name;
 	}
 
+	// get the lock corresponding to a specific resource
+	private ReentrantLock getResourceLock(String key) {
+		synchronized (resourceLocks) {
+			return resourceLocks.computeIfAbsent(key, k -> new ReentrantLock());
+		}
+	}
+
+
 	// Reads a data item
 	protected RMItem readData(String key)
 	{
-		synchronized(m_data) {
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+
+		try{
 			RMItem item = m_data.get(key);
 			if (item != null) {
 				return (RMItem)item.clone();
 			}
 			return null;
+		}finally {
+			lock.unlock();
 		}
 	}
 
 	// Writes a data item
 	protected void writeData(String key, RMItem value)
 	{
-		synchronized(m_data) {
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+		try{
 			m_data.put(key, value);
+		}finally {
+			lock.unlock();
 		}
 	}
 
 	// Remove the item out of storage
 	protected void removeData(String key)
 	{
-		synchronized(m_data) {
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+		try{
 			m_data.remove(key);
+		}finally {
+			lock.unlock();
 		}
 	}
 
@@ -107,8 +133,10 @@ public class ResourceManager implements IResourceManager
 	// Reserve an item
 	protected boolean reserveItem(int customerID, String key, String location)
 	{
+
 		Trace.info("RM::reserveItem(customer=" + customerID + ", " + key + ", " + location + ") called" );        
-		// Read customer object if it exists (and read lock it)
+
+		// atomically read a specific customer
 		Customer customer = (Customer)readData(Customer.getKey(customerID));
 		if (customer == null)
 		{
@@ -116,7 +144,7 @@ public class ResourceManager implements IResourceManager
 			return false;
 		} 
 
-		// Check if the item is available
+		// Atomically check if the item is available
 		ReservableItem item = (ReservableItem)readData(key);
 		if (item == null)
 		{
