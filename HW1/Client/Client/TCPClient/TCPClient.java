@@ -9,7 +9,7 @@ import Client.Command;
 
 public class TCPClient extends Client {
 
-    private String serverHost = "tr-open-08";
+    private String serverHost = "localhost";
     private int serverPort = 3031;
     private Socket socket;
     private ObjectOutputStream out;
