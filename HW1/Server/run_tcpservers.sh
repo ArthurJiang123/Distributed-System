@@ -4,7 +4,8 @@
 MACHINES=("tr-open-05" "tr-open-06" "tr-open-07" "tr-open-08")
 
 # Paths for the server scripts
-SERVER_PATH="$HOME/comp512/HW/A1/HW1Test/Server"  # Adjust the path to where your server scripts are
+#SERVER_PATH="$HOME/comp512/HW/A1/HW1Test/Server"  # Adjust the path to where your server scripts are
+SERVER_PATH="$HOME/COMP512/HW1/COMP512/HW1/Server"
 RUN_SERVER="./run_tcpserver.sh"
 RUN_MIDDLEWARE="./run_tcpmiddleware.sh"
 

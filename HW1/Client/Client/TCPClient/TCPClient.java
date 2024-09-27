@@ -6,10 +6,11 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import Client.Command;
+import Server.Common.ResponsePacket;
 
 public class TCPClient extends Client {
 
-    private String serverHost = "localhost";
+    private String serverHost = "tr-open-08";
     private int serverPort = 3031;
     private Socket socket;
     private ObjectOutputStream out;
@@ -118,10 +119,11 @@ public class TCPClient extends Client {
 
                 // Receive a response object from the server
                 Object response = receiveObject();
+                System.out.println("response" + response);
 
                 // Check if the response is a string and display it
-                if (response instanceof String) {
-                    System.out.println("Server response: " + response);
+                if (response instanceof ResponsePacket) {
+                    System.out.println("Server response: " + ((ResponsePacket) response).getMessage());
                 } else {
                     System.err.println("Unexpected response from server.");
                 }

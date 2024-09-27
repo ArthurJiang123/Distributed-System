@@ -53,6 +53,7 @@ class MiddlewareTaskHandler extends Thread{
 
         Command command = request.getCommand();
         Vector<String> arguments = request.getArguments();
+        System.out.println("Received command: " + request.getCommand());
         ResponsePacket result;
 
         // Given the resource type and forward the command
