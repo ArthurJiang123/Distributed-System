@@ -39,8 +39,8 @@ public class TCPMiddleware {
         // Set up host and port maps
         Map<String, String> resourceManagerHosts = new HashMap<>();
         resourceManagerHosts.put("flight", args[0]);
-        resourceManagerHosts.put("car", args[2]);
-        resourceManagerHosts.put("room", args[4]);
+        resourceManagerHosts.put("car", args[1]);
+        resourceManagerHosts.put("room", args[2]);
 
         // TODO: make sure implementing correctly how to connect with resource managers
 
@@ -61,7 +61,6 @@ public class TCPMiddleware {
                 // returned socket is used for communicating with the client
                 Socket clientSocket = serverSocket.accept();
 
-                // TODO: continue to make sure: Handle the client's request in a new thread
                 new MiddlewareTaskHandler(clientSocket).start();
             }
 

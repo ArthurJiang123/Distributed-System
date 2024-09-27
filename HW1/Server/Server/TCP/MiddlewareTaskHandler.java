@@ -1,12 +1,14 @@
 package Server.TCP;
 
+import Client.Command;
+import Client.TCPClient.Request;
+import Server.Common.ResponsePacket;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.util.Map;
-import java.util.StringTokenizer;
-import java.util.Vector;
+import java.util.*;
 
 class MiddlewareTaskHandler extends Thread{
     private Socket clientSocket;
@@ -23,7 +25,6 @@ class MiddlewareTaskHandler extends Thread{
 
 
     public void run(){
-        // TODO: handle client requests
         // TODO: ensure concurrency: what happens if multiple threads like this one executes?
         String command, commandLine;
 
@@ -33,72 +34,11 @@ class MiddlewareTaskHandler extends Thread{
                 ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
         ){
             // read the command line
-            commandLine = (String) input.readObject();
-            System.out.println("Received command line: " + commandLine);
+            Request request = (Request) input.readObject();
+            System.out.println("Received request: " + request.getCommand());
 
-            Vector<String> arguments = parse(commandLine);
-            command = arguments.elementAt(0).toLowerCase();
-            String result = "";
+            ResponsePacket result = forwardBundle(request);
 
-            switch (command){
-                //TODO: call methods...
-
-                // Command format: ReserveFlight,customerID,flightNum
-                // Command format: DeleteFlight,flightNum
-                // Command format: QueryFlight,flightNum
-                case "addflight":
-                case "reserveflight":
-                case "deleteflight":
-                case "queryflight": {
-                    // Command format: AddFlight,flightNum,flightSeats,flightPrice
-                    result = handleRequest("flight", commandLine);
-                    break;
-                }
-
-                // Command format: AddCars,location,numCars,price
-                // Command format: DeleteCars,location
-                // Command format: QueryCars,location
-                // Command format: ReserveCar,customerID,location
-                case "addcars":
-                case "deletecars":
-                case "querycars":
-                case "reservecar": {
-                    result = handleRequest("car", commandLine);
-                    break;
-                }
-
-                // Command format: AddRooms,location,numRooms,price
-                // Command format: DeleteRooms,location
-                // Command format: QueryRooms,location
-                // Command format: ReserveRoom,customerID,location
-                case "addrooms":
-                case "deleterooms":
-                case "queryrooms":
-                case "reserveroom": {
-                    result = handleRequest("room", commandLine);
-                    break;
-                }
-
-                // Command format: NewCustomer
-                // Command format: NewCustomerID,customerID
-                // Command format: DeleteCustomer,customerID
-                case "newcustomer":
-                case "newcustomerid":
-                case "deletecustomer": {
-                    result = handleRequest("customer", commandLine);
-                    break;
-                }
-                // Command format: Bundle,customerID,flightNum1,flightNum2,...,location,bookCar,bookRoom
-                case "bundle": {
-                    result = handleBundleRequest(arguments);
-                    break;
-                }
-                default:
-                    result = "Error: Unknown command.";
-                    break;
-            }
-
-            //TODO: standardize response format, refer to RMI?
             output.writeObject(result);
 
         }catch(IOException | ClassNotFoundException e){
@@ -109,141 +49,222 @@ class MiddlewareTaskHandler extends Thread{
     }
 
     // Forward the client request to the correct ResourceManager via TCP
-    private String handleRequest(String resourceType, String commandLine) {
-        String host = resourceManagerHosts.get(resourceType);
+    private ResponsePacket handleRequest(Request request) {
 
-        try (Socket rmSocket = new Socket(host, managerPort);
-             ObjectOutputStream outToRM = new ObjectOutputStream(rmSocket.getOutputStream());
-             ObjectInputStream inFromRM = new ObjectInputStream(rmSocket.getInputStream())
-        ){
+        Command command = request.getCommand();
+        Vector<String> arguments = request.getArguments();
+        ResponsePacket result;
 
-            // Forward the request to the ResourceManager
-            outToRM.writeObject(commandLine);
+        // Given the resource type and forward the command
+        // to an RM
+        switch (command) {
+            case AddFlight:
+            case ReserveFlight:
+            case DeleteFlight:
+            case QueryFlight:
+            case QueryFlightPrice:
+                result = forwardSingle("flight", request);
+                break;
 
-            // Receive the result from the ResourceManager
-            return (String) inFromRM.readObject();
+            case AddCars:
+            case DeleteCars:
+            case QueryCars:
+            case QueryCarsPrice:
+            case ReserveCar:
+                result = forwardSingle("car", request);
+                break;
 
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-            return "Error connecting to ResourceManager";
-        }
-    }
+            case AddRooms:
+            case DeleteRooms:
+            case QueryRooms:
+            case QueryRoomsPrice:
+            case ReserveRoom:
+                result = forwardSingle("room", request);
+                break;
 
-    private String handleCustomerRequest(String command, Vector<String> arguments){
-        String result = "";
-        try{
+            case AddCustomer:
+            case AddCustomerID:
+            case DeleteCustomer:
+            case QueryCustomer:
+                result = forwardCustomer("customer", request);
+                break;
 
-            if(command.equals("newcustomer")){
-                // call 3 resource managers sequentially to create customers with the same id.
-                int customerID = Integer.parseInt(handleRequest("flight", "newcustomer"));
-                handleRequest("car", "newcustomerid," + customerID);
-                handleRequest("room", "newcustomerid," + customerID);
+            case Bundle:
+                result = forwardBundle(request);
+                break;
 
-                result = "New customer created with ID: " + customerID;
-            }else if(command.equals("newcustomerid")){
-
-                // call 3 resource managers sequentially to create customers with the same id.
-                int customerID = Integer.parseInt(handleRequest("flight", "newcustomer"));
-                handleRequest("car", "newcustomerid," + customerID);
-                handleRequest("room", "newcustomerid," + customerID);
-
-                result = "New customer created with ID: " + customerID;
-
-            }else if(command.equals("deletecustomer")){
-
-                int customerID = Integer.parseInt(arguments.elementAt(1));
-                handleRequest("flight", command + "," + customerID);
-                handleRequest("car", command + "," + customerID);
-                handleRequest("room", command + "," + customerID);
-                result = "Customer deleted successfully.";
-
-            }
-        }catch (Exception e) {
-            result = "Error processing customer request.";
+            default:
+                result = new ResponsePacket(false,"Unknown command.");
         }
         return result;
     }
 
-    private String handleBundleRequest(Vector<String> arguments) {
-        if (arguments.size() < 6) {
-            return "Error: Incorrect number of arguments for Bundle.";
-        }
+    // Forward request to a resource manager
+    private ResponsePacket forwardSingle(String resourceType, Request request) {
+        String host = resourceManagerHosts.get(resourceType);
 
-        int customerID = toInt(arguments.elementAt(1));
+        try (Socket rmSocket = new Socket(host, managerPort);
+             ObjectOutputStream outToRM = new ObjectOutputStream(rmSocket.getOutputStream());
+             ObjectInputStream inFromRM = new ObjectInputStream(rmSocket.getInputStream())) {
+
+            // Forward
+            outToRM.writeObject(request);
+
+            // Receive result
+            return (ResponsePacket) inFromRM.readObject();
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return new ResponsePacket(false, "Error connecting to ResourceManager");
+        }
+    }
+
+    // Handle bundle request
+    private ResponsePacket forwardBundle(Request request) {
+
+        // get the arguments
+        // then forward to different resource managers
+        // TODO: handle flights, cars, and rooms similar as previous logic
+        // TODO: Implement rollback mechanism if any operation fails, as shown before.
+
+        Vector<String> arguments = request.getArguments();
+        int customerID = Integer.parseInt(arguments.get(1));
         Vector<String> flightNumbers = new Vector<>();
         int i = 2;
-
-        // Collect flight numbers
-        while (!isNumeric(arguments.elementAt(i))) {
+        while(i < arguments.size() - 3){
             flightNumbers.add(arguments.elementAt(i));
             i++;
         }
 
         String location = arguments.elementAt(i++);
-        boolean bookCar = toBoolean(arguments.elementAt(i++));
-        boolean bookRoom = toBoolean(arguments.elementAt(i));
+        boolean reserveCar = Boolean.parseBoolean(arguments.elementAt(i++));
+        boolean reserveRoom = Boolean.parseBoolean(arguments.elementAt(i));
 
-        boolean success = true;
+        boolean success = false;
 
         // Reserve flights
         for (String flightNum : flightNumbers) {
-            String flightCommand = "reserveflight," + customerID + "," + flightNum;
-            if (!handleRequest("flight", flightCommand).equals("Flight reserved successfully.")) {
-                success = false;
-                break;
+            Vector<String> arg = new Vector<>();
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(flightNum));
+            ResponsePacket flightResponse = forwardSingle("flight", new Request(Command.ReserveFlight, arg));
+            if (flightResponse.getStatus()) {
+                success = true;
             }
         }
-
         // Reserve car
-        if (success && bookCar) {
-            String carCommand = "reservecar," + customerID + "," + location;
-            if (!handleRequest("car", carCommand).equals("Car reserved successfully.")) {
-                success = false;
+        if (reserveCar) {
+            Vector<String> arg = new Vector<>();
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(location));
+            ResponsePacket carResponse = forwardSingle("car", new Request(Command.ReserveCar, arg));
+            if (carResponse.getStatus()) {
+                success = true;
             }
         }
 
         // Reserve room
-        if (success && bookRoom) {
-            String roomCommand = "reserveroom," + customerID + "," + location;
-            if (!handleRequest("room", roomCommand).equals("Room reserved successfully.")) {
-                success = false;
+        if (success && reserveRoom) {
+            Vector<String> arg = new Vector<>();
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(location));
+            ResponsePacket roomResponse = forwardSingle("room", new Request(Command.ReserveRoom, arg));
+            if (roomResponse.getStatus()) {
+                success = true;
             }
         }
-
-        return success ? "Bundle reservation successful." : "Bundle reservation failed.";
-    }
-
-    public static Vector<String> parse(String command)
-    {
-        Vector<String> arguments = new Vector<String>();
-        StringTokenizer tokenizer = new StringTokenizer(command,",");
-        String argument = "";
-        while (tokenizer.hasMoreTokens())
-        {
-            argument = tokenizer.nextToken();
-            argument = argument.trim();
-            arguments.add(argument);
+        if(success){
+            return new ResponsePacket(true, "bundle operation partially/fully succeeded.");
         }
-        return arguments;
+
+        return new ResponsePacket(false, "bundle operation failed completely");
     }
 
-    public static int toInt(String string) throws NumberFormatException
-    {
-        return (Integer.valueOf(string)).intValue();
-    }
 
-    // Helper method to convert string to boolean
-    private boolean toBoolean(String str) {
-        return Boolean.parseBoolean(str);
-    }
+    // For customer creation/deletion across multiple managers
+    private ResponsePacket forwardCustomer(String resourceType, Request request) {
+        ResponsePacket result1;
+        ResponsePacket result2;
+        ResponsePacket result3;
 
-    // Helper method to check if a string is numeric
-    private boolean isNumeric(String str) {
-        try {
-            Integer.parseInt(str);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
+        // TODO: apply similar logic for deletecustomer etc.
+        switch (request.getCommand()){
+            // add a new customer in 1 resource manager, use the returned id for other resource managers
+            // rollback: if one of them fails, delete the new customer in previous resource managers
+            case AddCustomer:
+                result1 = forwardSingle("flight", request);
+                int customerID = Integer.parseInt(result1.getMessage());
+                Vector<String> customerTemp = new Vector<>();
+                customerTemp.add(String.valueOf(customerID));
+                if(!result1.getStatus()){
+                    return result1;
+                }
+                result2 = forwardSingle("car", new Request(Command.AddCustomerID, customerTemp));
+                if(!result2.getStatus()){
+                    forwardSingle("flight", new Request(Command.DeleteCustomer, customerTemp));
+                    return result2;
+                }
+                result3 = forwardSingle("room", new Request(Command.AddCustomerID, customerTemp));
+                if(!result3.getStatus()){
+                    forwardSingle("flight", new Request(Command.DeleteCustomer, customerTemp));
+                    forwardSingle("car", new Request(Command.DeleteCustomer, customerTemp));
+                    return result3;
+                }
+                break;
+            // rollback: delete the new customer on resource managers who created the customer
+            case AddCustomerID:
+                result1 = forwardSingle("flight", request);
+                if(!result1.getStatus()){
+                    return result1;
+                }
+                result2 = forwardSingle("car", request);
+                if(!result2.getStatus()){
+                    forwardSingle("flight", new Request(Command.DeleteCustomer, request.getArguments()));
+                    return result2;
+                }
+                result3 = forwardSingle("room", request);
+                if(!result3.getStatus()){
+                    forwardSingle("flight", new Request(Command.DeleteCustomer, request.getArguments()));
+                    forwardSingle("car", new Request(Command.DeleteCustomer, request.getArguments()));
+                    return result3;
+                }
+                break;
+            // success when: delete customer successfully
+            // fail when: customer does not exist
+            // If some of them failed, delete the customer from all managers
+            // If no one succeeds, give error message
+            // Thus, no need for rollback
+            case DeleteCustomer:
+                result1 = forwardSingle("flight", request);
+
+                result2 = forwardSingle("car", request);
+
+                result3 = forwardSingle("room", request);
+                if(!result1.getStatus() && result2.getStatus() && !result3.getStatus()){
+                    return new ResponsePacket(false, "Customer information is not synchronized. Data is reset.");
+                }
+                if(!result1.getStatus() || result2.getStatus() || result3.getStatus()){
+                    return new ResponsePacket(false, "Customer does not exist.");
+                }
+                break;
+            // no need for rollback
+            // when one of them fails, return a response indicating failure
+            // if all of them succeed, return a response containing the aggregation
+            case QueryCustomer:
+                result1 = forwardSingle("flight", request);
+                result2 = forwardSingle("car", request);
+                result3 = forwardSingle("room", request);
+                if(!result1.getStatus() || result2.getStatus() || result3.getStatus()){
+                    return result1;
+                }
+                String msg =
+                        result1.getMessage() +
+                        result2.getMessage() +
+                        result3.getMessage();
+                return new ResponsePacket(true, msg);
+            default:
+                return new ResponsePacket(false, "Unknown command.");
         }
+        return result1;
     }
 }
