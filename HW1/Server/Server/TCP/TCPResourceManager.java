@@ -26,6 +26,9 @@ public class TCPResourceManager extends ResourceManager {
         resourceManager.start();
     }
 
+    /**
+     * Start the server.
+     */
     public void start(){
         try(ServerSocket serverSocket = new ServerSocket(port)){
 
@@ -33,10 +36,8 @@ public class TCPResourceManager extends ResourceManager {
 
             // for every connection established, create a new thread to take care of the connection
             while(true){
-                // accept connection (from middleware)
                 Socket middlewareSocket = serverSocket.accept();
 
-                // Handle the request in a separate thread, for concurrency
                 new RMTaskHandler(middlewareSocket, this).start();
             }
         }catch (IOException e){

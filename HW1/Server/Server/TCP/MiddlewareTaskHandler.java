@@ -2,9 +2,7 @@ package Server.TCP;
 
 import Client.Command;
 import Client.TCPClient.Request;
-import Server.Common.Customer;
 import Server.Common.ResponsePacket;
-import Server.Common.Room;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -15,110 +13,108 @@ import java.util.*;
 
 class MiddlewareTaskHandler extends Thread{
 
-    // socket of the client of the middleware
+    // maintains the socket of the client connected to the middleware
     private Socket clientSocket;
 
-    // hosts of the resource managers
-    private Map<String, String> resourceManagerHosts;
 
-    // sockets connected to resource managers
-    private Map<String, Socket> rmSockets; // Connections to the Resource Managers
-
-    private Map<String, ObjectOutputStream> rmOutputStreams;  // Store Output Streams
-    private Map<String, ObjectInputStream> rmInputStreams;    // Store Input Streams
+    // maintains sockets connected to resource managers
+    // resource types(Flights, Cars, Rooms) -> Socket
+    private Map<String, Socket> rmSockets;
 
     private final static String FLIGHTS = "Flights";
     private final static String CARS = "Cars";
     private final static String ROOMS = "Rooms";
 
-    private final int managerPort = 3031;
+    // maintains the input/output streams of the resource managers
+    private final Map<String, ObjectOutputStream> rmOutputStreams;
+    private final Map<String, ObjectInputStream> rmInputStreams;
 
-    public MiddlewareTaskHandler(Socket clientSocket, Map<String, String> resourceManagerHosts, Map<String, Socket> rmSockets) {
+    public MiddlewareTaskHandler(Socket clientSocket,
+                                 Map<String, Socket> rmSockets,
+                                 Map<String, ObjectOutputStream> rmOutputStreams,
+                                 Map<String, ObjectInputStream> rmInputStreams) {
+        this.rmSockets =rmSockets;
         this.clientSocket = clientSocket;
-        this.resourceManagerHosts = resourceManagerHosts;
-        this.rmSockets = rmSockets;
-        this.rmOutputStreams = new HashMap<>();
-        this.rmInputStreams = new HashMap<>();
+        this.rmOutputStreams = rmOutputStreams;
+        this.rmInputStreams = rmInputStreams;
     }
 
-    // Initialize persistent streams for resource manager connections
-    private void initializeStreams() {
-        for (String rmType : resourceManagerHosts.keySet()) {
-            try {
-                if (rmSockets.containsKey(rmType)) {
-                    Socket socket = rmSockets.get(rmType);
-
-                    rmOutputStreams.put(rmType, new ObjectOutputStream(socket.getOutputStream()));
-                    rmInputStreams.put(rmType, new ObjectInputStream(socket.getInputStream()));
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.err.println("Error initializing streams for RM: " + rmType);
-            }
-        }
-    }
-
+    /**
+     * Handles the request from the client
+     * Retrieve: the client socket and associated streams
+     * Process: forward the request, and send the response back to the client
+     */
     public void run(){
+
         System.out.println("Handling a new client request...");
-        initializeStreams();
+
         try(
                 ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
                 ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
         ){
+
             // from the socket, get the input and output streams
-            while (!clientSocket.isClosed()) {
+            while(true){
                 try {
                     // Read the request from the client
                     Request request = (Request) input.readObject();
                     System.out.println("Received request: " + request.getCommand());
-
                     // Handle the request
                     ResponsePacket response = handleRequest(request);
-
                     // Send the response back to the client
                     output.writeObject(response);
                     output.flush();
                 } catch (EOFException eof) {
-
                     System.out.println("Client has closed the connection.");
                     break;
-
                 } catch (ClassNotFoundException | IOException e) {
-
                     System.err.println("Error processing request: " + e.getMessage());
                     e.printStackTrace();
                     break;
-
                 }
             }
         }catch (IOException e) {
             System.err.println("Error setting up client streams: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            // Cleanup after client disconnects
-            try {
-                clientSocket.close();
-                System.out.println("Client connection closed.");
-            } catch (IOException e) {
-                System.err.println("Error closing client socket.");
-                e.printStackTrace();
-            }
+            cleanupClient();
         }
-
     }
 
-    // Forward the client request to the correct ResourceManager via TCP
+    /**
+     * close the client socket upon disconnection
+     */
+    private void cleanupClient() {
+        try {
+            if (clientSocket != null && !clientSocket.isClosed()) {
+                clientSocket.close();
+            }
+            System.out.println("Client connection closed and resources cleaned up.");
+        } catch (IOException e) {
+            System.err.println("Failed to close client socket.");
+            e.printStackTrace();
+        }
+    }
+
+
+    /**
+     * Forward the request to a single resource manager
+     * @param request
+     * @return
+     */
     private ResponsePacket handleRequest(Request request) {
+
 
         Command command = request.getCommand();
 
         Vector<String> arguments = request.getArguments();
+
         System.out.println("Processing command: " + command + " with arguments: " + arguments);
 
         ResponsePacket result;
 
-        // Given the resource type and forward the command
-        // to an RM
+        // Given the resource type
+        // forward the request to an RM
         switch (command) {
             case AddFlight:
             case ReserveFlight:
@@ -161,7 +157,15 @@ class MiddlewareTaskHandler extends Thread{
         return result;
     }
 
-    // Forward request to a resource manager
+
+    /**
+     * Forward a request to a specific resource manager
+     * Use: the socket of a connected RM.
+     * Use: the output/input stream of the RM's socket
+     * @param resourceType
+     * @param request
+     * @return
+     */
     private ResponsePacket forwardSingle(String resourceType, Request request) {
 
         Socket rmSocket = rmSockets.get(resourceType);
@@ -169,6 +173,7 @@ class MiddlewareTaskHandler extends Thread{
         if (rmSocket == null) {
             return new ResponsePacket(false, "No connection to ResourceManager of type: " + resourceType);
         }
+
 
         ObjectOutputStream outToRM = rmOutputStreams.get(resourceType);
         ObjectInputStream inFromRM = rmInputStreams.get(resourceType);
@@ -178,11 +183,11 @@ class MiddlewareTaskHandler extends Thread{
         }
 
         try{
-            // Forward
+            // Forward the request
             outToRM.writeObject(request);
             outToRM.flush();
 
-            // Receive result
+            // Receive the result
             return (ResponsePacket) inFromRM.readObject();
 
         } catch (IOException | ClassNotFoundException e) {
@@ -191,17 +196,24 @@ class MiddlewareTaskHandler extends Thread{
         }
     }
 
-    // Handle bundle request
+    /**
+     * Handle the bundle request
+     * Allows for partial success:
+     * Response contains true if at least one flight/room/car is reserved.
+     * Response contains false if it failed to reserve all of them.
+     * @param request
+     * @return
+     */
     private ResponsePacket forwardBundle(Request request) {
 
-        // get the arguments
-        // then forward to different resource managers
-        // TODO: handle flights, cars, and rooms similar as previous logic
-        // TODO: Implement rollback mechanism if any operation fails, as shown before.
 
         Vector<String> arguments = request.getArguments();
         int customerID = Integer.parseInt(arguments.get(1));
         Vector<String> flightNumbers = new Vector<>();
+
+        // 1st argument == command itself
+        // 2nd argument == customer id
+        // record flight numbers starting from the 3rd command
         int i = 2;
         while(i < arguments.size() - 3){
             flightNumbers.add(arguments.elementAt(i));
@@ -214,19 +226,23 @@ class MiddlewareTaskHandler extends Thread{
 
         boolean success = false;
 
-        // Reserve flights
+        // reserve flights
         for (String flightNum : flightNumbers) {
             Vector<String> arg = new Vector<>();
+
+            arg.add(Command.ReserveFlight.name());
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(flightNum));
+
             ResponsePacket flightResponse = forwardSingle(FLIGHTS, new Request(Command.ReserveFlight, arg));
             if (flightResponse.getStatus()) {
                 success = true;
             }
         }
-        // Reserve car
+        // reserve a car
         if (reserveCar) {
             Vector<String> arg = new Vector<>();
+            arg.add(Command.ReserveCar.name());
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(location));
             ResponsePacket carResponse = forwardSingle(CARS, new Request(Command.ReserveCar, arg));
@@ -235,9 +251,10 @@ class MiddlewareTaskHandler extends Thread{
             }
         }
 
-        // Reserve room
+        // Reserve a room
         if (success && reserveRoom) {
             Vector<String> arg = new Vector<>();
+            arg.add(Command.ReserveRoom.name());
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(location));
             ResponsePacket roomResponse = forwardSingle(ROOMS, new Request(Command.ReserveRoom, arg));
@@ -245,6 +262,7 @@ class MiddlewareTaskHandler extends Thread{
                 success = true;
             }
         }
+
         if(success){
             return new ResponsePacket(true, "bundle operation partially/fully succeeded.");
         }
@@ -254,12 +272,18 @@ class MiddlewareTaskHandler extends Thread{
 
 
     // For customer creation/deletion across multiple managers
+
+    /**
+     * Handle customer request (needing multiple managers)
+     * @param request
+     * @return
+     */
     private ResponsePacket forwardCustomer(Request request) {
+
         ResponsePacket result1;
         ResponsePacket result2;
         ResponsePacket result3;
 
-        // TODO: apply similar logic for deletecustomer etc.
         switch (request.getCommand()){
             // add a new customer in 1 resource manager, use the returned id for other resource managers
             // rollback: if one of them fails, delete the new customer in previous resource managers
@@ -269,29 +293,34 @@ class MiddlewareTaskHandler extends Thread{
                 System.out.println("returned customer id:" + customerID);
 
                 Vector<String> customerTemp = new Vector<>();
+                customerTemp.add(Command.AddCustomerID.name());
                 customerTemp.add(customerID);
+
                 System.out.println("result for adding new customer to flight manager:" + result1.getStatus());
 
                 if(!result1.getStatus()){
                     return result1;
                 }
+
                 result2 = forwardSingle(CARS, new Request(Command.AddCustomerID, customerTemp));
                 System.out.println("result for adding new customer to cars manager:" + result2.getStatus());
 
                 if(!result2.getStatus()){
+                    customerTemp.set(0, Command.DeleteCustomer.name());
                     forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, customerTemp));
                     return result2;
                 }
+
                 result3 = forwardSingle(ROOMS, new Request(Command.AddCustomerID, customerTemp));
                 if(!result3.getStatus()){
+                    customerTemp.set(0, Command.DeleteCustomer.name());
                     forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, customerTemp));
                     forwardSingle(CARS, new Request(Command.DeleteCustomer, customerTemp));
                     return result3;
                 }
                 System.out.println("result for adding new customer to rooms manager:" + result3.getStatus());
-
                 break;
-            // rollback: delete the new customer on resource managers who created the customer
+
             case AddCustomerID:
                 result1 = forwardSingle(FLIGHTS, request);
                 if(!result1.getStatus()){
@@ -312,8 +341,8 @@ class MiddlewareTaskHandler extends Thread{
             // success when: delete customer successfully
             // fail when: customer does not exist
             // If some of them failed, delete the customer from all managers
-            // If no one succeeds, give error message
-            // Thus, no need for rollback
+            // If no one succeeds, just give error message
+            // No need for rollback
             case DeleteCustomer:
                 result1 = forwardSingle(FLIGHTS, request);
 
@@ -334,9 +363,7 @@ class MiddlewareTaskHandler extends Thread{
                 result1 = forwardSingle(FLIGHTS, request);
                 result2 = forwardSingle(CARS, request);
                 result3 = forwardSingle(ROOMS, request);
-                if(!result1.getStatus() || result2.getStatus() || result3.getStatus()){
-                    return result1;
-                }
+
                 String msg =
                         result1.getMessage() +
                         result2.getMessage() +

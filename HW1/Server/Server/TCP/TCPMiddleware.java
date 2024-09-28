@@ -7,28 +7,46 @@ package Server.TCP;
  *  Forwarding is done using TCP sockets.
  * */
 
+import Server.Common.ResourceManager;
+
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
 
-public class TCPMiddleware {
+public class TCPMiddleware{
 
     private static final int port = 3031;
     private static final int rmPort = 3031;
+    // resource types
     private final static String FLIGHTS = "Flights";
     private final static String CARS = "Cars";
     private final static String ROOMS = "Rooms";
-    private final Map<String, String> resourceManagerHosts; // Maps resource types to hosts
-    private final Map<String, Socket> rmSockets;
+    // resource types -> host names
+    private final Map<String, String> resourceManagerHosts;
 
+    // resource types -> sockets
+    private final Map<String, Socket> rmSockets;
+    // resource types -> output streams
+    private final Map<String, ObjectOutputStream> rmOutputStreams;
+    private final Map<String, ObjectInputStream> rmInputStreams;
 
     public TCPMiddleware(Map<String, String> resourceManagerHosts) {
         this.resourceManagerHosts = resourceManagerHosts;
         this.rmSockets = new HashMap<>();
+        this.rmOutputStreams = new HashMap<>();
+        this.rmInputStreams = new HashMap<>();
     }
 
+
+    /**
+     * Middleware bootstrap
+     * @param args
+     * @throws IOException
+     */
     public static void main(String[] args) throws IOException {
 
         if(args.length < 3){
@@ -42,24 +60,28 @@ public class TCPMiddleware {
         resourceManagerHosts.put(CARS, args[1]);
         resourceManagerHosts.put(ROOMS, args[2]);
 
-        // TODO: make sure implementing correctly how to connect with resource managers
 
         TCPMiddleware middleware = new TCPMiddleware(resourceManagerHosts);
-        // Check connections to all Resource Managers
+
+        // connect to all resource managers
         if (!middleware.connectToResourceManagers()) {
             System.err.println("Failed to connect to one or more Resource Managers. Exiting...");
             System.exit(1);
         }
 
-        // start the middleware
+        // start
         middleware.start();
 
     }
-    /** As a "Client" of Resource Managers
+
+    /**
+     * As a "Client" of Resource Managers:
      * Establishes connections to Resource Managers
-     * true if all connections are successful, otherwise false.
+     * return true if all connections are successful, otherwise false.
+     * @return
      */
     private boolean connectToResourceManagers() {
+
         boolean allConnected = false;
         int maxRetries = 5;
         int retryInterval = 2000;
@@ -69,16 +91,23 @@ public class TCPMiddleware {
             System.out.println("Attempting to connect to Resource Managers (Attempt " + attempt + "/" + maxRetries + ")");
             allConnected = true;
 
+            // Attempt to connect to each resource manager
             for (Map.Entry<String, String> entry : resourceManagerHosts.entrySet()) {
                 String resourceType = entry.getKey();
                 String host = entry.getValue();
 
+                // Check if the connection is already established
                 if (!rmSockets.containsKey(resourceType)) {
                     try {
+
                         System.out.println("Connecting to " + resourceType + " Resource Manager at " + host + ":" + rmPort);
 
                         Socket rmSocket = new Socket(host, rmPort);
+
+                        // after connecting, put the socket, and output/input streams into the map
                         rmSockets.put(resourceType, rmSocket);
+                        rmOutputStreams.put(resourceType, new ObjectOutputStream(rmSocket.getOutputStream()));
+                        rmInputStreams.put(resourceType, new ObjectInputStream(rmSocket.getInputStream()));
 
                         System.out.println("Successfully connected to " + resourceType + " Resource Manager.");
                     } catch (IOException e) {
@@ -88,6 +117,8 @@ public class TCPMiddleware {
                 }
             }
 
+            // if all connected, return
+            // otherwise, retry the connection later.
             if (allConnected) {
                 return true;
             } else {
@@ -99,30 +130,27 @@ public class TCPMiddleware {
                 }
             }
         }
-
-        return false;  // Return false if unable to connect to all RMs after max retries
+        return false;
     }
 
+
     /**
-     * As a "Server" for the client
+     * As the "Server" of clients:
+     * waits and accepts a connection from the client
+     * start a handler(i.e. a thread) to handle the connection with the client.
      */
     public void start(){
         try(ServerSocket serverSocket = new ServerSocket(port)){
             System.out.println("Middleware listening on port:" + port);
-
-            // Recheck all connections before starting
-            if (!connectToResourceManagers()) {
-                System.err.println("Some Resource Manager connections failed. Middleware cannot start.");
-                return;
-            }
 
             // now it can accept client tasks
             while(true){
                 // listens and waits for a connection
                 // returned socket is used for communicating with the client
                 Socket clientSocket = serverSocket.accept();
+                System.out.println("Accepted new client connection...");
 
-                new MiddlewareTaskHandler(clientSocket, resourceManagerHosts, rmSockets).start();
+                new MiddlewareTaskHandler(clientSocket, rmSockets, rmOutputStreams, rmInputStreams).start();
             }
 
         }catch(IOException e){
