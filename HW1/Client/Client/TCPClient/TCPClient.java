@@ -10,14 +10,22 @@ import Server.Common.ResponsePacket;
 
 public class TCPClient extends Client {
 
-    private String serverHost = "tr-open-08";
-    private int serverPort = 3031;
+    private String serverHost;
+    private int serverPort;
     private Socket socket;
     private ObjectOutputStream out;
     private ObjectInputStream in;
 
+    public TCPClient(String serverHost, int serverPort) {
+        this.serverHost = serverHost;
+        this.serverPort = serverPort;
+    }
+
     public static void main(String[] args) {
-        TCPClient client = new TCPClient();
+        String serverHost = args[0];
+        int serverPort = Integer.parseInt(args[1]);
+
+        TCPClient client = new TCPClient(serverHost, serverPort);
 
         // Register a shutdown hook to ensure the socket is closed properly
         // Socket will be closed when the Java process running your TCPClient application is terminated
@@ -26,15 +34,13 @@ public class TCPClient extends Client {
             client.closeResources();  // Ensure all resources are closed on shutdown
         }));
 
-        // Connect to the server
         client.connectServer();
 
-        // Start the client interaction (from the Client superclass)
-        client.start();  // This method is inherited and handles user interaction
+        client.start();
     }
 
     public TCPClient() {
-        super();  // Call to the parent constructor
+        super();
     }
 
     @Override
@@ -60,7 +66,7 @@ public class TCPClient extends Client {
 
         while (true)
         {
-            // Read the next command
+            // Read the next commandf
             String command = "";
             Vector<String> arguments = new Vector<String>();
             try {
