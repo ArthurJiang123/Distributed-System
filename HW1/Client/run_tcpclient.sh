@@ -6,4 +6,4 @@ HOST=${1:-tr-open-08}
 PORT=${2:-3031}
 
 # Run the TCPClient
-java -cp . Client.TCPClient.TCPClient $HOST $PORT
+java -cp .:request-classes.jar:../Server/response-classes.jar Client.TCPClient.TCPClient $HOST $PORT

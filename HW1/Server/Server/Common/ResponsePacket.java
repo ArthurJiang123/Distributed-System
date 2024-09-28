@@ -1,6 +1,8 @@
 package Server.Common;
 
-public class ResponsePacket {
+import java.io.Serializable;
+
+public class ResponsePacket implements Serializable {
     private Boolean status;
     private String message;
 
