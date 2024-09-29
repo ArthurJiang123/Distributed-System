@@ -34,7 +34,8 @@ public class TCPResourceManager extends ResourceManager {
 
             System.out.println("ResourceManager \'" + s_serverName +"\' listening on port:" + port);
 
-            // for every connection established, create a new thread to take care of the connection
+            // for every connection established,
+            // create a new thread to take care of the connection
             while(true){
                 Socket middlewareSocket = serverSocket.accept();
 

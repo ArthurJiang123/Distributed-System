@@ -21,25 +21,9 @@ public class TCPMiddleware{
 
     private static final int port = 3031;
     private static final int rmPort = 3031;
-    // resource types
-    private final static String FLIGHTS = "Flights";
-    private final static String CARS = "Cars";
-    private final static String ROOMS = "Rooms";
-    // resource types -> host names
-    private final Map<String, String> resourceManagerHosts;
 
-    // resource types -> sockets
-    private final Map<String, Socket> rmSockets;
-    // resource types -> output streams
-    private final Map<String, ObjectOutputStream> rmOutputStreams;
-    private final Map<String, ObjectInputStream> rmInputStreams;
 
-    public TCPMiddleware(Map<String, String> resourceManagerHosts) {
-        this.resourceManagerHosts = resourceManagerHosts;
-        this.rmSockets = new HashMap<>();
-        this.rmOutputStreams = new HashMap<>();
-        this.rmInputStreams = new HashMap<>();
-    }
+    public TCPMiddleware() {}
 
 
     /**
@@ -55,102 +39,35 @@ public class TCPMiddleware{
         }
 
         // Set up host and port maps
-        Map<String, String> resourceManagerHosts = new HashMap<>();
-        resourceManagerHosts.put(FLIGHTS, args[0]);
-        resourceManagerHosts.put(CARS, args[1]);
-        resourceManagerHosts.put(ROOMS, args[2]);
+        String FLIGHTSHOST = args[0];
+        String CARSHOST = args[1];
+        String ROOMSHOST = args[2];
 
-
-        TCPMiddleware middleware = new TCPMiddleware(resourceManagerHosts);
-
-        // connect to all resource managers
-        if (!middleware.connectToResourceManagers()) {
-            System.err.println("Failed to connect to one or more Resource Managers. Exiting...");
-            System.exit(1);
-        }
+        TCPMiddleware middleware = new TCPMiddleware();
 
         // start
-        middleware.start();
-
+        middleware.start(FLIGHTSHOST, CARSHOST, ROOMSHOST);
     }
-
-    /**
-     * As a "Client" of Resource Managers:
-     * Establishes connections to Resource Managers
-     * return true if all connections are successful, otherwise false.
-     * @return
-     */
-    private boolean connectToResourceManagers() {
-
-        boolean allConnected = false;
-        int maxRetries = 5;
-        int retryInterval = 2000;
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-
-            System.out.println("Attempting to connect to Resource Managers (Attempt " + attempt + "/" + maxRetries + ")");
-            allConnected = true;
-
-            // Attempt to connect to each resource manager
-            for (Map.Entry<String, String> entry : resourceManagerHosts.entrySet()) {
-                String resourceType = entry.getKey();
-                String host = entry.getValue();
-
-                // Check if the connection is already established
-                if (!rmSockets.containsKey(resourceType)) {
-                    try {
-
-                        System.out.println("Connecting to " + resourceType + " Resource Manager at " + host + ":" + rmPort);
-
-                        Socket rmSocket = new Socket(host, rmPort);
-
-                        // after connecting, put the socket, and output/input streams into the map
-                        rmSockets.put(resourceType, rmSocket);
-                        rmOutputStreams.put(resourceType, new ObjectOutputStream(rmSocket.getOutputStream()));
-                        rmInputStreams.put(resourceType, new ObjectInputStream(rmSocket.getInputStream()));
-
-                        System.out.println("Successfully connected to " + resourceType + " Resource Manager.");
-                    } catch (IOException e) {
-                        System.err.println("Failed to connect to " + resourceType + " Resource Manager at " + host + ":" + rmPort);
-                        allConnected = false;
-                    }
-                }
-            }
-
-            // if all connected, return
-            // otherwise, retry the connection later.
-            if (allConnected) {
-                return true;
-            } else {
-                System.out.println("Retrying connection in " + (retryInterval / 1000) + " seconds...");
-                try {
-                    Thread.sleep(retryInterval);  // Wait before retrying
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return false;
-    }
-
 
     /**
      * As the "Server" of clients:
      * waits and accepts a connection from the client
      * start a handler(i.e. a thread) to handle the connection with the client.
      */
-    public void start(){
+    public void start(String flightHost, String carHost, String roomHost ){
         try(ServerSocket serverSocket = new ServerSocket(port)){
             System.out.println("Middleware listening on port:" + port);
 
-            // now it can accept client tasks
+            // accept client connection
             while(true){
                 // listens and waits for a connection
                 // returned socket is used for communicating with the client
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("Accepted new client connection...");
+                System.out.println("A new client is connected...");
 
-                new MiddlewareTaskHandler(clientSocket, rmSockets, rmOutputStreams, rmInputStreams).start();
+                // Create a new MiddlewareTaskHandler to handle the client
+                // and to communicate with RMs
+                new MiddlewareTaskHandler(clientSocket, flightHost, carHost, roomHost, rmPort).start();
             }
 
         }catch(IOException e){

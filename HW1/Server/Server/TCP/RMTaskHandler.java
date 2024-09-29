@@ -32,8 +32,8 @@ class RMTaskHandler extends Thread {
         System.out.println("Started handling a new connection from Middleware...");
 
         try (
+                ObjectOutputStream output = new ObjectOutputStream(middlewareSocket.getOutputStream());
                 ObjectInputStream input = new ObjectInputStream(middlewareSocket.getInputStream());
-                ObjectOutputStream output = new ObjectOutputStream(middlewareSocket.getOutputStream())
         ) {
             // Keep handling request
             // until the middleware closes the connection
@@ -107,6 +107,10 @@ class RMTaskHandler extends Thread {
                 case QueryFlight:
                     int seats = resourceManager.queryFlight(Integer.parseInt(arguments.get(1)));
                     return new ResponsePacket(true, String.valueOf(seats));
+
+                case QueryFlightPrice:
+                    int price = resourceManager.queryFlightPrice(Integer.parseInt(arguments.get(1)));
+                    return new ResponsePacket(true, String.valueOf(price));
 
                 case AddCars:
                     boolean carsAdded = resourceManager.addCars(

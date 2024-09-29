@@ -3,7 +3,6 @@ package Server.RMI;
 import Server.Common.*;
 import Server.Interface.IResourceManager;
 
-import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -139,12 +138,23 @@ public class Middleware extends ResourceManager {
         return null;
     }
 
-    @Override
-    public boolean bundle(int customerID, Vector<String> flightNumbers, String location, boolean reserveCar, boolean reserveRoom) throws RemoteException {
-
+    private void acquireLocks() {
         flightLock.lock();
         carLock.lock();
         roomLock.lock();
+    }
+
+    private void releaseLocks() {
+        roomLock.unlock();
+        carLock.unlock();
+        flightLock.unlock();
+    }
+    @Override
+    public boolean bundle(int customerID, Vector<String> flightNumbers, String location, boolean reserveCar, boolean reserveRoom) throws RemoteException {
+
+        // first acquire locks when needing multiple managers
+        acquireLocks();
+
         boolean success = false;
 
         System.out.println("Starting bundle reservation for customer: " + customerID);
@@ -186,9 +196,8 @@ public class Middleware extends ResourceManager {
                 }
             }
         }finally {
-            flightLock.unlock();
-            carLock.unlock();
-            roomLock.unlock();
+            // release locks in reverse order
+            releaseLocks();
         }
 
         return success;
@@ -197,18 +206,17 @@ public class Middleware extends ResourceManager {
     @Override
     public boolean deleteCustomer(int customerID) throws RemoteException {
         // Delete customer from all managers
-        flightLock.lock();
-        carLock.lock();
-        roomLock.lock();
+        acquireLocks();
+
         boolean flightDeleted, carDeleted, roomDeleted;
         try{
+
             flightDeleted = flightManager.deleteCustomer(customerID);
             carDeleted = carManager.deleteCustomer(customerID);
             roomDeleted = roomManager.deleteCustomer(customerID);
+
         }finally {
-            flightLock.unlock();
-            carLock.unlock();
-            roomLock.unlock();
+            releaseLocks();
         }
 
         return flightDeleted && carDeleted && roomDeleted;
@@ -216,9 +224,7 @@ public class Middleware extends ResourceManager {
 
     @Override
     public int newCustomer() throws RemoteException{
-        flightLock.lock();
-        carLock.lock();
-        roomLock.lock();
+        acquireLocks();
         int customerID = -1;
         try{
             customerID = flightManager.newCustomer();
@@ -230,28 +236,25 @@ public class Middleware extends ResourceManager {
                 carCreated = carManager.newCustomer(customerID);
                 roomCreated = roomManager.newCustomer(customerID);
             }catch (RemoteException  e){
-                rollbackCustomerCreation(customerID);
                 System.err.println("Error creating customer in one of the ResourceManagers: " + e.getMessage());
                 return -1;
             }
+
             if(!carCreated || !roomCreated){
-                rollbackCustomerCreation(customerID);
+                rollbackAddingCustomer(customerID);
                 System.err.println("Failed to create customer in all ResourceManagers.");
                 return -1;
             }
+
         }finally {
-            flightLock.unlock();
-            carLock.unlock();
-            roomLock.unlock();
+            releaseLocks();
         }
         return customerID;
     }
 
     @Override
     public boolean newCustomer(int customerID) throws RemoteException{
-        flightLock.lock();
-        carLock.lock();
-        roomLock.lock();
+        acquireLocks();
         try{
             boolean flightCreated = flightManager.newCustomer(customerID);
             boolean carCreated = false;
@@ -261,27 +264,24 @@ public class Middleware extends ResourceManager {
                 roomCreated = roomManager.newCustomer(customerID);
 
             }catch (RemoteException  e){
-                rollbackCustomerCreation(customerID);
                 System.err.println("Error creating customer in carManager or roomManager: " + e.getMessage());
                 return false;
             }
 
             if (!flightCreated || !carCreated || !roomCreated) {
-                rollbackCustomerCreation(customerID);
+                rollbackAddingCustomer(customerID);
                 System.err.println("Failed to create customer across all ResourceManagers.");
                 return false;
             }
         }finally {
-            flightLock.unlock();
-            carLock.unlock();
-            roomLock.unlock();
+            releaseLocks();
         }
 
         return true;
     }
 
     // helper method only
-    private void rollbackCustomerCreation(int customerId) {
+    private void rollbackAddingCustomer(int customerId) {
 
         // Rollback customer creation in all managers
         try {
@@ -327,156 +327,111 @@ public class Middleware extends ResourceManager {
 
     @Override
     public boolean addFlight(int flightNum, int flightSeats, int flightPrice) throws RemoteException {
-        flightLock.lock();
-        try{
-            return flightManager.addFlight(flightNum, flightSeats, flightPrice);
-        }finally {
-            flightLock.unlock();
-        }
+
+        return flightManager.addFlight(flightNum, flightSeats, flightPrice);
+
     }
 
     @Override
     public boolean addCars(String location, int count, int price) throws RemoteException{
-        carLock.lock();
-        try{
-            return carManager.addCars(location, count, price);
-        }finally {
-            carLock.unlock();
-        }
+
+        return carManager.addCars(location, count, price);
+
     }
 
     @Override
     public boolean addRooms(String location, int count, int price) throws RemoteException{
-        roomLock.lock();
-        try {
-            return roomManager.addRooms(location, count, price);
-        }finally {
-            roomLock.unlock();
-        }
+
+        return roomManager.addRooms(location, count, price);
+
     }
 
     @Override
     public boolean deleteFlight(int flightNum) throws RemoteException {
-        flightLock.lock();
-        try{
-            return flightManager.deleteFlight(flightNum);
-        }finally {
-            flightLock.unlock();
-        }
+
+        return flightManager.deleteFlight(flightNum);
+
     }
     @Override
     public boolean deleteCars(String location) throws RemoteException {
-        carLock.lock();
-        try{
-            return carManager.deleteCars(location);
-        }finally {
-            carLock.unlock();
-        }
+
+        return carManager.deleteCars(location);
+
     }
     @Override
     public boolean deleteRooms(String location) throws RemoteException{
-        roomLock.lock();
-        try{
-            return roomManager.deleteRooms(location);
-        }finally {
-            roomLock.unlock();
-        }
+
+        return roomManager.deleteRooms(location);
+
     }
 
     @Override
     public boolean reserveRoom(int customerID, String location) throws RemoteException{
-        roomLock.lock();
-        try{
-            return roomManager.reserveRoom(customerID, location);
-        }finally {
-            roomLock.unlock();
-        }
+
+        return roomManager.reserveRoom(customerID, location);
+
     }
 
     @Override
     public boolean reserveFlight(int customerID, int flightNum) throws RemoteException{
-        flightLock.lock();
-        try{
-            return flightManager.reserveFlight(customerID, flightNum);
-        }finally {
-            flightLock.unlock();
-        }
+
+        return flightManager.reserveFlight(customerID, flightNum);
+
     }
 
     @Override
     public boolean reserveCar(int customerID, String location) throws RemoteException{
-        carLock.lock();
-        try{
-            return carManager.reserveCar(customerID, location);
-        }finally {
-            carLock.unlock();
-        }
+
+        return carManager.reserveCar(customerID, location);
+
     }
 
     @Override
     public int queryFlightPrice(int flightNum) throws RemoteException
     {
-        flightLock.lock();
-        try{
-            return flightManager.queryFlightPrice(flightNum);
-        }finally {
-            flightLock.unlock();
-        }
+
+        return flightManager.queryFlightPrice(flightNum);
+
     }
 
     // Returns price of cars at this location
     public int queryCarsPrice(String location) throws RemoteException
     {
-        carLock.lock();
-        try{
-            return carManager.queryCarsPrice(location);
-        }finally {
-            carLock.unlock();
-        }
+
+        return carManager.queryCarsPrice(location);
+
     }
 
     // Returns room price at this location
     public int queryRoomsPrice(String location) throws RemoteException
     {
-        roomLock.lock();
-        try{
-            return roomManager.queryRoomsPrice(location);
-        }finally {
-            roomLock.unlock();
-        }
+
+        return roomManager.queryRoomsPrice(location);
+
     }
 
 
     public int queryFlight(int flightNum) throws RemoteException
     {
-        flightLock.lock();
-        try{
-            return flightManager.queryFlight(flightNum);
-        }finally {
-            flightLock.unlock();
-        }
+
+        return flightManager.queryFlight(flightNum);
+
     }
 
     // Returns the number of cars available at a location
     public int queryCars(String location) throws RemoteException
     {
-        carLock.lock();
-        try {
-            return carManager.queryCars(location);
-        }finally {
-            carLock.unlock();
-        }
+
+        return carManager.queryCars(location);
+
     }
 
     // Returns the amount of rooms available at a location
     public int queryRooms(String location) throws RemoteException
     {
-        roomLock.lock();
-        try{
-            return roomManager.queryRooms(location);
-        }finally {
-            roomLock.unlock();
-        }
+
+        return roomManager.queryRooms(location);
+
     }
 
 }

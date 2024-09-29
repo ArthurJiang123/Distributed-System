@@ -4,10 +4,7 @@ import Client.Command;
 import Client.TCPClient.Request;
 import Server.Common.ResponsePacket;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
@@ -15,6 +12,19 @@ class MiddlewareTaskHandler extends Thread{
 
     // maintains the socket of the client connected to the middleware
     private Socket clientSocket;
+    private Socket flightSocket;
+    private Socket carSocket;
+    private Socket roomSocket;
+
+    private ObjectOutputStream flightOutputStream;
+    private ObjectInputStream flightInputStream;
+
+    private ObjectInputStream carInputStream;
+    private ObjectOutputStream carOutputStream;
+
+    private ObjectInputStream roomInputStream;
+    private ObjectOutputStream roomOutputStream;
+
 
 
     // maintains sockets connected to resource managers
@@ -25,18 +35,39 @@ class MiddlewareTaskHandler extends Thread{
     private final static String CARS = "Cars";
     private final static String ROOMS = "Rooms";
 
-    // maintains the input/output streams of the resource managers
-    private final Map<String, ObjectOutputStream> rmOutputStreams;
-    private final Map<String, ObjectInputStream> rmInputStreams;
+    private int rmPort;
 
-    public MiddlewareTaskHandler(Socket clientSocket,
-                                 Map<String, Socket> rmSockets,
-                                 Map<String, ObjectOutputStream> rmOutputStreams,
-                                 Map<String, ObjectInputStream> rmInputStreams) {
-        this.rmSockets =rmSockets;
+    /**
+     *
+     * @param clientSocket
+     * @param flightHost
+     * @param carHost
+     * @param roomHost
+     * @param rmPort
+     */
+    public MiddlewareTaskHandler(Socket clientSocket, String flightHost, String carHost, String roomHost, int rmPort){
+
         this.clientSocket = clientSocket;
-        this.rmOutputStreams = rmOutputStreams;
-        this.rmInputStreams = rmInputStreams;
+        this.rmPort = rmPort;
+
+        // to be safer, we initialize output streams before input streams.
+        try{
+
+            this.flightSocket = new Socket(flightHost, rmPort);
+            this.flightOutputStream = new ObjectOutputStream(flightSocket.getOutputStream());
+            this.flightInputStream = new ObjectInputStream(flightSocket.getInputStream());
+
+            this.carSocket = new Socket(carHost, rmPort);
+            this.carOutputStream = new ObjectOutputStream(carSocket.getOutputStream());
+            this.carInputStream = new ObjectInputStream(carSocket.getInputStream());
+
+            this.roomSocket = new Socket(roomHost, rmPort);
+            this.roomOutputStream = new ObjectOutputStream(roomSocket.getOutputStream());
+            this.roomInputStream = new ObjectInputStream(roomSocket.getInputStream());
+        }catch(IOException e){
+            System.out.println("Error on initializing middleware task handler");
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -49,21 +80,24 @@ class MiddlewareTaskHandler extends Thread{
         System.out.println("Handling a new client request...");
 
         try(
-                ObjectInputStream input = new ObjectInputStream(clientSocket.getInputStream());
-                ObjectOutputStream output = new ObjectOutputStream(clientSocket.getOutputStream());
+                ObjectOutputStream clientOut = new ObjectOutputStream(clientSocket.getOutputStream());
+                ObjectInputStream clientIn = new ObjectInputStream(clientSocket.getInputStream());
         ){
 
             // from the socket, get the input and output streams
             while(true){
                 try {
                     // Read the request from the client
-                    Request request = (Request) input.readObject();
+                    Request request = (Request) clientIn.readObject();
                     System.out.println("Received request: " + request.getCommand());
+
                     // Handle the request
                     ResponsePacket response = handleRequest(request);
+
                     // Send the response back to the client
-                    output.writeObject(response);
-                    output.flush();
+                    clientOut.writeObject(response);
+                    clientOut.flush();
+
                 } catch (EOFException eof) {
                     System.out.println("Client has closed the connection.");
                     break;
@@ -86,16 +120,54 @@ class MiddlewareTaskHandler extends Thread{
      */
     private void cleanupClient() {
         try {
-            if (clientSocket != null && !clientSocket.isClosed()) {
-                clientSocket.close();
-            }
-            System.out.println("Client connection closed and resources cleaned up.");
+           clientSocket.close();
+           flightSocket.close();
+           carSocket.close();
+           roomSocket.close();
+           System.out.println("Client connection closed and resources cleaned up.");
         } catch (IOException e) {
-            System.err.println("Failed to close client socket.");
+            System.err.println("Failed to close client and resource manager socket(s).");
             e.printStackTrace();
         }
     }
 
+    private ResponsePacket forwardToFlight(Request request) {
+        try {
+
+            flightOutputStream.writeObject(request);
+            flightOutputStream.flush();
+            return (ResponsePacket) flightInputStream.readObject();
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return new ResponsePacket(false, "Error forwarding request to Flight RM.");
+        }
+    }
+
+    private ResponsePacket forwardToCar(Request request) {
+        try {
+
+            carOutputStream.writeObject(request);
+            carOutputStream.flush();
+            return (ResponsePacket) carInputStream.readObject();
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return new ResponsePacket(false, "Error forwarding request to Flight RM.");
+        }
+    }
+
+    private ResponsePacket forwardToRoom(Request request) {
+        try {
+            roomOutputStream.writeObject(request);
+            roomOutputStream.flush();
+            return (ResponsePacket) roomInputStream.readObject();
+
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+            return new ResponsePacket(false, "Error forwarding request to Flight RM.");
+        }
+    }
 
     /**
      * Forward the request to a single resource manager
@@ -121,7 +193,7 @@ class MiddlewareTaskHandler extends Thread{
             case DeleteFlight:
             case QueryFlight:
             case QueryFlightPrice:
-                result = forwardSingle(FLIGHTS, request);
+                result = forwardToFlight(request);
                 break;
 
             case AddCars:
@@ -129,7 +201,7 @@ class MiddlewareTaskHandler extends Thread{
             case QueryCars:
             case QueryCarsPrice:
             case ReserveCar:
-                result = forwardSingle(CARS, request);
+                result = forwardToCar(request);
                 break;
 
             case AddRooms:
@@ -137,7 +209,7 @@ class MiddlewareTaskHandler extends Thread{
             case QueryRooms:
             case QueryRoomsPrice:
             case ReserveRoom:
-                result = forwardSingle(ROOMS, request);
+                result = forwardToRoom(request);
                 break;
 
             case AddCustomer:
@@ -155,45 +227,6 @@ class MiddlewareTaskHandler extends Thread{
                 result = new ResponsePacket(false,"Unknown command.");
         }
         return result;
-    }
-
-
-    /**
-     * Forward a request to a specific resource manager
-     * Use: the socket of a connected RM.
-     * Use: the output/input stream of the RM's socket
-     * @param resourceType
-     * @param request
-     * @return
-     */
-    private ResponsePacket forwardSingle(String resourceType, Request request) {
-
-        Socket rmSocket = rmSockets.get(resourceType);
-
-        if (rmSocket == null) {
-            return new ResponsePacket(false, "No connection to ResourceManager of type: " + resourceType);
-        }
-
-
-        ObjectOutputStream outToRM = rmOutputStreams.get(resourceType);
-        ObjectInputStream inFromRM = rmInputStreams.get(resourceType);
-
-        if (outToRM == null || inFromRM == null) {
-            return new ResponsePacket(false, "No connection to " + resourceType + " RM.");
-        }
-
-        try{
-            // Forward the request
-            outToRM.writeObject(request);
-            outToRM.flush();
-
-            // Receive the result
-            return (ResponsePacket) inFromRM.readObject();
-
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-            return new ResponsePacket(false, "Error connecting to ResourceManager");
-        }
     }
 
     /**
@@ -234,7 +267,7 @@ class MiddlewareTaskHandler extends Thread{
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(flightNum));
 
-            ResponsePacket flightResponse = forwardSingle(FLIGHTS, new Request(Command.ReserveFlight, arg));
+            ResponsePacket flightResponse = forwardToFlight(new Request(Command.ReserveFlight, arg));
             if (flightResponse.getStatus()) {
                 success = true;
             }
@@ -245,7 +278,8 @@ class MiddlewareTaskHandler extends Thread{
             arg.add(Command.ReserveCar.name());
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(location));
-            ResponsePacket carResponse = forwardSingle(CARS, new Request(Command.ReserveCar, arg));
+            ResponsePacket carResponse = forwardToCar(new Request(Command.ReserveCar, arg));
+
             if (carResponse.getStatus()) {
                 success = true;
             }
@@ -257,7 +291,8 @@ class MiddlewareTaskHandler extends Thread{
             arg.add(Command.ReserveRoom.name());
             arg.add(String.valueOf(customerID));
             arg.add(String.valueOf(location));
-            ResponsePacket roomResponse = forwardSingle(ROOMS, new Request(Command.ReserveRoom, arg));
+            ResponsePacket roomResponse = forwardToRoom(new Request(Command.ReserveRoom, arg));
+
             if (roomResponse.getStatus()) {
                 success = true;
             }
@@ -269,9 +304,6 @@ class MiddlewareTaskHandler extends Thread{
 
         return new ResponsePacket(false, "bundle operation failed completely");
     }
-
-
-    // For customer creation/deletion across multiple managers
 
     /**
      * Handle customer request (needing multiple managers)
@@ -288,7 +320,7 @@ class MiddlewareTaskHandler extends Thread{
             // add a new customer in 1 resource manager, use the returned id for other resource managers
             // rollback: if one of them fails, delete the new customer in previous resource managers
             case AddCustomer:
-                result1 = forwardSingle(FLIGHTS, request);
+                result1 = forwardToFlight(request);
                 String customerID = result1.getMessage();
                 System.out.println("returned customer id:" + customerID);
 
@@ -302,39 +334,40 @@ class MiddlewareTaskHandler extends Thread{
                     return result1;
                 }
 
-                result2 = forwardSingle(CARS, new Request(Command.AddCustomerID, customerTemp));
+                result2 = forwardToCar(new Request(Command.AddCustomerID, customerTemp));
                 System.out.println("result for adding new customer to cars manager:" + result2.getStatus());
 
                 if(!result2.getStatus()){
                     customerTemp.set(0, Command.DeleteCustomer.name());
-                    forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, customerTemp));
+                    forwardToFlight(new Request(Command.DeleteCustomer, customerTemp));
                     return result2;
                 }
 
-                result3 = forwardSingle(ROOMS, new Request(Command.AddCustomerID, customerTemp));
+                result3 = forwardToRoom(new Request(Command.AddCustomerID, customerTemp));
                 if(!result3.getStatus()){
                     customerTemp.set(0, Command.DeleteCustomer.name());
-                    forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, customerTemp));
-                    forwardSingle(CARS, new Request(Command.DeleteCustomer, customerTemp));
+                    forwardToFlight(new Request(Command.DeleteCustomer, customerTemp));
+                    forwardToRoom(new Request(Command.DeleteCustomer, customerTemp));
                     return result3;
                 }
                 System.out.println("result for adding new customer to rooms manager:" + result3.getStatus());
                 break;
 
             case AddCustomerID:
-                result1 = forwardSingle(FLIGHTS, request);
+                result1 = forwardToFlight(request);
                 if(!result1.getStatus()){
                     return result1;
                 }
-                result2 = forwardSingle(CARS, request);
+                result2 = forwardToCar(request);
                 if(!result2.getStatus()){
-                    forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, request.getArguments()));
+                    forwardToFlight(new Request(Command.DeleteCustomer, request.getArguments()));
                     return result2;
                 }
-                result3 = forwardSingle(ROOMS, request);
+
+                result3 = forwardToRoom(request);
                 if(!result3.getStatus()){
-                    forwardSingle(FLIGHTS, new Request(Command.DeleteCustomer, request.getArguments()));
-                    forwardSingle(CARS, new Request(Command.DeleteCustomer, request.getArguments()));
+                    forwardToFlight(new Request(Command.DeleteCustomer, request.getArguments()));
+                    forwardToCar(new Request(Command.DeleteCustomer, request.getArguments()));
                     return result3;
                 }
                 break;
@@ -344,25 +377,20 @@ class MiddlewareTaskHandler extends Thread{
             // If no one succeeds, just give error message
             // No need for rollback
             case DeleteCustomer:
-                result1 = forwardSingle(FLIGHTS, request);
+                result1 = forwardToFlight(request);
 
-                result2 = forwardSingle(CARS, request);
+                result2 = forwardToCar(request);
 
-                result3 = forwardSingle(ROOMS, request);
-                if(!result1.getStatus() && result2.getStatus() && !result3.getStatus()){
-                    return new ResponsePacket(false, "Customer information is not synchronized. Data is reset.");
-                }
-                if(!result1.getStatus() || result2.getStatus() || result3.getStatus()){
-                    return new ResponsePacket(false, "Customer does not exist.");
-                }
+                result3 = forwardToRoom(request);
+
                 break;
             // no need for rollback
             // when one of them fails, return a response indicating failure
             // if all of them succeed, return a response containing the aggregation
             case QueryCustomer:
-                result1 = forwardSingle(FLIGHTS, request);
-                result2 = forwardSingle(CARS, request);
-                result3 = forwardSingle(ROOMS, request);
+                result1 = forwardToFlight(request);
+                result2 = forwardToCar(request);
+                result3 = forwardToRoom(request);
 
                 String msg =
                         result1.getMessage() +
