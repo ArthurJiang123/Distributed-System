@@ -101,42 +101,238 @@ public class TCPClient extends Client {
     @Override
     public void execute(Command cmd, Vector<String> arguments) throws NumberFormatException {
         try {
-            if (cmd == Command.Help) {
-                if (arguments.size() == 1) {
-                    System.out.println(Command.description());
-                } else if (arguments.size() == 2) {
-                    Command l_cmd = Command.fromString((String) arguments.elementAt(1));
-                    System.out.println(l_cmd.toString());
-                } else {
-                    System.err.println((char) 27 + "[31;1mCommand exception: " + (char) 27 + "[0mImproper use of help command. Location \"help\" or \"help,<CommandName>\"");
+            switch (cmd) {
+                case Help: {
+                    if (arguments.size() == 1) {
+                        System.out.println(Command.description());
+                    } else if (arguments.size() == 2) {
+                        Command l_cmd = Command.fromString(arguments.elementAt(1));
+                        System.out.println(l_cmd.toString());
+                    } else {
+                        System.err.println((char) 27 + "[31;1mCommand exception: " + (char) 27 + "[0mImproper use of help command. Location \"help\" or \"help,<CommandName>\"");
+                    }
+                    break;
                 }
-            } else if(cmd == Command.Quit){
-                checkArgumentsCount(1, arguments.size());
+                case AddFlight: {
+                    checkArgumentsCount(4, arguments.size());
 
-                System.out.println("Quitting client");
-                System.exit(0);
-            } else { // Concrete commands
+                    System.out.println("Adding a new flight ");
+                    System.out.println("-Flight Number: " + arguments.elementAt(1));
+                    System.out.println("-Flight Seats: " + arguments.elementAt(2));
+                    System.out.println("-Flight Price: " + arguments.elementAt(3));
 
-                // Input validation
-                validateArguments(cmd, arguments);
-                // Send a Request object to the server
-                Request request = new Request(cmd, arguments);
-                sendObject(request);
+                    int flightNum = toInt(arguments.elementAt(1));
+                    int flightSeats = toInt(arguments.elementAt(2));
+                    int flightPrice = toInt(arguments.elementAt(3));
 
-                // Receive a response object from the server
-                Object response = receiveObject();
-                System.out.println("response" + response);
-
-                // Check if the response is a string and display it
-                if (response instanceof ResponsePacket) {
-                    System.out.println("Server response: " + ((ResponsePacket) response).getMessage());
-                } else {
-                    System.err.println("Unexpected response from server.");
+                    sendRequestToServer(cmd, arguments);
+                    break;
                 }
+                case AddCars: {
+                    checkArgumentsCount(4, arguments.size());
+
+                    System.out.println("Adding new cars");
+                    System.out.println("-Car Location: " + arguments.elementAt(1));
+                    System.out.println("-Number of Cars: " + arguments.elementAt(2));
+                    System.out.println("-Car Price: " + arguments.elementAt(3));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case AddRooms: {
+                    checkArgumentsCount(4, arguments.size());
+
+                    System.out.println("Adding new rooms");
+                    System.out.println("-Room Location: " + arguments.elementAt(1));
+                    System.out.println("-Number of Rooms: " + arguments.elementAt(2));
+                    System.out.println("-Room Price: " + arguments.elementAt(3));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case AddCustomer: {
+                    checkArgumentsCount(1, arguments.size());
+
+                    System.out.println("Adding a new customer");
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case AddCustomerID: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Adding a new customer");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case DeleteFlight: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Deleting a flight");
+                    System.out.println("-Flight Number: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case DeleteCars: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Deleting all cars at a particular location");
+                    System.out.println("-Car Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case DeleteRooms: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Deleting all rooms at a particular location");
+                    System.out.println("-Room Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case DeleteCustomer: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Deleting a customer from the database");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryFlight: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying a flight");
+                    System.out.println("-Flight Number: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryCars: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying cars location");
+                    System.out.println("-Car Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryRooms: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying rooms location");
+                    System.out.println("-Room Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryCustomer: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying customer information");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryFlightPrice: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying a flight price");
+                    System.out.println("-Flight Number: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryCarsPrice: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying cars price");
+                    System.out.println("-Car Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case QueryRoomsPrice: {
+                    checkArgumentsCount(2, arguments.size());
+
+                    System.out.println("Querying rooms price");
+                    System.out.println("-Room Location: " + arguments.elementAt(1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case ReserveFlight: {
+                    checkArgumentsCount(3, arguments.size());
+
+                    System.out.println("Reserving seat in a flight");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+                    System.out.println("-Flight Number: " + arguments.elementAt(2));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case ReserveCar: {
+                    checkArgumentsCount(3, arguments.size());
+
+                    System.out.println("Reserving a car at a location");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+                    System.out.println("-Car Location: " + arguments.elementAt(2));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case ReserveRoom: {
+                    checkArgumentsCount(3, arguments.size());
+
+                    System.out.println("Reserving a room at a location");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+                    System.out.println("-Room Location: " + arguments.elementAt(2));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case Bundle: {
+                    if (arguments.size() < 6) {
+                        System.err.println((char) 27 + "[31;1mCommand exception: " + (char) 27 + "[0mBundle command expects at least 6 arguments. Location \"help\" or \"help,<CommandName>\"");
+                        break;
+                    }
+
+                    System.out.println("Reserving a bundle");
+                    System.out.println("-Customer ID: " + arguments.elementAt(1));
+                    for (int i = 0; i < arguments.size() - 5; ++i) {
+                        System.out.println("-Flight Number: " + arguments.elementAt(2 + i));
+                    }
+                    System.out.println("-Location for Car/Room: " + arguments.elementAt(arguments.size() - 3));
+                    System.out.println("-Book Car: " + arguments.elementAt(arguments.size() - 2));
+                    System.out.println("-Book Room: " + arguments.elementAt(arguments.size() - 1));
+
+                    sendRequestToServer(cmd, arguments);
+                    break;
+                }
+                case Quit:
+                    checkArgumentsCount(1, arguments.size());
+
+                    System.out.println("Quitting client");
+                    System.exit(0);
             }
         } catch (Exception e) {
             System.err.println("Error during command execution: " + e.getMessage());
         }
+    }
+
+    private void sendRequestToServer(Command cmd, Vector<String> arguments) {
+        // Create and send the Request object to the server
+        Request request = new Request(cmd, arguments);
+        sendObject(request);
+
+        // Receive the response from the server
+        ResponsePacket response = (ResponsePacket) receiveObject();
+        System.out.println("Server response: " + response.getMessage());
     }
 
     public void sendObject(Object obj) {
@@ -155,187 +351,6 @@ public class TCPClient extends Client {
             System.err.println("Error receiving object: " + e.getMessage());
         }
         return null;
-    }
-
-    public static void validateArguments(Command cmd, Vector<String> arguments) throws IllegalArgumentException, NumberFormatException {
-        switch (cmd) {
-            case AddFlight:
-                // AddFlight expects exactly 4 arguments
-                checkArgumentsCount(4, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Flight Number
-                toInt(arguments.elementAt(2)); // Flight Seats
-                toInt(arguments.elementAt(3)); // Flight Price
-                break;
-
-            case AddCars:
-                // AddCars expects exactly 4 arguments
-                checkArgumentsCount(4, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Car Location (String)
-                toInt(arguments.elementAt(2)); // Number of Cars
-                toInt(arguments.elementAt(3)); // Car Price
-                break;
-
-            case AddRooms:
-                // AddRooms expects exactly 4 arguments
-                checkArgumentsCount(4, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Room Location (String)
-                toInt(arguments.elementAt(2)); // Number of Rooms
-                toInt(arguments.elementAt(3)); // Room Price
-                break;
-
-            case AddCustomer:
-                // AddCustomer expects 1 argument
-                checkArgumentsCount(1, arguments.size());
-                break;
-
-            case AddCustomerID:
-                // AddCustomerID expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                break;
-
-            case DeleteFlight:
-                // DeleteFlight expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Flight Number
-                break;
-
-            case DeleteCars:
-                // DeleteCars expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Car Location (String)
-                break;
-
-            case DeleteRooms:
-                // DeleteRooms expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Room Location (String)
-                break;
-
-            case DeleteCustomer:
-                // DeleteCustomer expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                break;
-
-            case QueryFlight:
-                // QueryFlight expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Flight Number
-                break;
-
-            case QueryCars:
-                // QueryCars expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Car Location (String)
-                break;
-
-            case QueryRooms:
-                // QueryRooms expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Room Location (String)
-                break;
-
-            case QueryCustomer:
-                // QueryCustomer expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                break;
-
-            case QueryFlightPrice:
-                // QueryFlightPrice expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Flight Number
-                break;
-
-            case QueryCarsPrice:
-                // QueryCarsPrice expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Car Location (String)
-                break;
-
-            case QueryRoomsPrice:
-                // QueryRoomsPrice expects exactly 2 arguments
-                checkArgumentsCount(2, arguments.size());
-
-                // Validate argument types
-                arguments.elementAt(1); // Room Location (String)
-                break;
-
-            case ReserveFlight:
-                // ReserveFlight expects exactly 3 arguments
-                checkArgumentsCount(3, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                toInt(arguments.elementAt(2)); // Flight Number
-                break;
-
-            case ReserveCar:
-                // ReserveCar expects exactly 3 arguments
-                checkArgumentsCount(3, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                arguments.elementAt(2); // Car Location (String)
-                break;
-
-            case ReserveRoom:
-                // ReserveRoom expects exactly 3 arguments
-                checkArgumentsCount(3, arguments.size());
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                arguments.elementAt(2); // Room Location (String)
-                break;
-
-            case Bundle:
-                // Bundle expects at least 6 arguments
-                if (arguments.size() < 6) {
-                    throw new IllegalArgumentException("Bundle command expects at least 6 arguments.");
-                }
-
-                // Validate argument types
-                toInt(arguments.elementAt(1)); // Customer ID
-                for (int i = 2; i < arguments.size() - 3; i++) {
-                    toInt(arguments.elementAt(i)); // Flight Numbers
-                }
-                arguments.elementAt(arguments.size() - 3); // Location (String)
-                toBoolean(arguments.elementAt(arguments.size() - 2)); // Reserve Car (Y/N)
-                toBoolean(arguments.elementAt(arguments.size() - 1)); // Reserve Room (Y/N)
-                break;
-
-            default:
-                throw new IllegalArgumentException("Invalid command.");
-        }
     }
 
     // Method to close all resources (socket, input/output streams)
