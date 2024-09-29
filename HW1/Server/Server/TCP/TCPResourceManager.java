@@ -8,7 +8,7 @@ import java.net.Socket;
 
 public class TCPResourceManager extends ResourceManager {
 
-    private static final int port = 3031;
+    private static final int port = 4031;
     private static String s_serverName = "Server";
 
     public TCPResourceManager(String p_name) {

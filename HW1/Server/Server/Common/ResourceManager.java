@@ -171,6 +171,60 @@ public class ResourceManager implements IResourceManager
 		}        
 	}
 
+	// helper methods to cancel a reservation of an item
+	protected boolean cancelReserveItem(int customerID, String key, String location)
+	{
+
+		Trace.info("RM::cancelReserveItem(customer=" + customerID + ", " + key + ", " + location + ") called" );
+
+		// atomically read a specific customer
+		Customer customer = (Customer)readData(Customer.getKey(customerID));
+		if (customer == null)
+		{
+			Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ")  failed--customer doesn't exist");
+			return false;
+		}
+
+		// Atomically check if the item is available
+		ReservableItem item = (ReservableItem)readData(key);
+		if (item == null)
+		{
+			Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") failed--item doesn't exist initially");
+			return false;
+		}
+		else
+		{
+			// cancel the reservation
+			boolean success = customer.cancelReserve(key, location, item.getPrice());
+
+			writeData(customer.getKey(), customer);
+
+			// increase the available item only when actually canceled a reservation
+			if(success){
+				// Increase the number of available items in the storage
+				item.setCount(item.getCount() + 1);
+				item.setReserved(item.getReserved() - 1);
+				writeData(item.getKey(), item);
+			}
+
+			Trace.info("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") succeeded");
+			return true;
+		}
+	}
+
+	// only available for middleware to use
+	public boolean cancelReserveFlight(int customerID, int flightNum){
+		return cancelReserveItem(customerID, Flight.getKey(flightNum), String.valueOf(flightNum));
+	}
+
+	public boolean cancelReserveCar(int customerID, String location){
+		return cancelReserveItem(customerID, Car.getKey(location), location);
+	}
+
+	public boolean cancelReserveRoom(int customerID, String location){
+		return cancelReserveItem(customerID, Room.getKey(location), location);
+	}
+
 	// Create a new flight, or add seats to existing flight
 	// NOTE: if flightPrice <= 0 and the flight already exists, it maintains its current price
 	public boolean addFlight(int flightNum, int flightSeats, int flightPrice) throws RemoteException

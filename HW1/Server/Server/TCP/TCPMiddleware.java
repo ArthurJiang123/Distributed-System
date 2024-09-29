@@ -7,20 +7,16 @@ package Server.TCP;
  *  Forwarding is done using TCP sockets.
  * */
 
-import Server.Common.ResourceManager;
-
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
-import java.util.Map;
 
 public class TCPMiddleware{
 
-    private static final int port = 3031;
-    private static final int rmPort = 3031;
+    private static final int port = 4031;
+    private static final int rmPort = 4031;
 
 
     public TCPMiddleware() {}

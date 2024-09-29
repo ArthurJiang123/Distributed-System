@@ -10,7 +10,7 @@ fi
 
 # Default values if no arguments are provided
 HOST=${1:-tr-open-08}
-PORT=${2:-3031}
+PORT=${2:-4031}
 
 # Run the TCPClient
 java -cp .:request-classes.jar:../Server/response-classes.jar Client.TCPClient.TCPClient $HOST $PORT

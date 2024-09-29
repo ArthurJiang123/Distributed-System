@@ -393,9 +393,9 @@ class MiddlewareTaskHandler extends Thread{
                 result3 = forwardToRoom(request);
 
                 String msg =
-                        result1.getMessage() +
-                        result2.getMessage() +
-                        result3.getMessage();
+                        "\nFlights " + result1.getMessage() +
+                        "Cars " + result2.getMessage() +
+                        "Rooms " + result3.getMessage();
                 return new ResponsePacket(true, msg);
             default:
                 return new ResponsePacket(false, "Unknown command.");

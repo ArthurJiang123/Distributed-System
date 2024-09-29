@@ -24,10 +24,7 @@ public class Middleware extends ResourceManager {
     private IResourceManager carManager;
     private IResourceManager roomManager;
 
-    // lock acquisition order for acquiring multiple locks: flightLock -> carLock -> roomLock
-    private final Lock flightLock = new ReentrantLock();
-    private final Lock carLock = new ReentrantLock();
-    private final Lock roomLock = new ReentrantLock();
+    private final Lock middlewireLock = new ReentrantLock();
 
 
     public Middleware(String p_name, IResourceManager flightManager, IResourceManager carManager, IResourceManager roomManager) {
@@ -138,28 +135,16 @@ public class Middleware extends ResourceManager {
         return null;
     }
 
-    private void acquireLocks() {
-        flightLock.lock();
-        carLock.lock();
-        roomLock.lock();
-    }
-
-    private void releaseLocks() {
-        roomLock.unlock();
-        carLock.unlock();
-        flightLock.unlock();
-    }
     @Override
     public boolean bundle(int customerID, Vector<String> flightNumbers, String location, boolean reserveCar, boolean reserveRoom) throws RemoteException {
 
         // first acquire locks when needing multiple managers
-        acquireLocks();
-
-        boolean success = false;
+        middlewireLock.lock();
 
         System.out.println("Starting bundle reservation for customer: " + customerID);
         System.out.println("Location: " + location + ", Reserve Car: " + reserveCar + ", Reserve Room: " + reserveRoom);
 
+        Vector<Integer> reservedFlights = new Vector<>();
         try{
             // Try to reserve flights
             for (String flightNumStr : flightNumbers) {
@@ -168,9 +153,18 @@ public class Middleware extends ResourceManager {
 
                 if (flightReserved) {
                     System.out.println("Flight " + flightNum + " reserved for customer " + customerID);
-                    success = true;
+                    reservedFlights.add(flightNum);
                 } else {
                     System.out.println("Failed to reserve flight " + flightNum + " for customer " + customerID);
+                    System.out.println("Rollback:");
+                    if(!reservedFlights.isEmpty()){
+                        for(int reservedFlightNum : reservedFlights){
+                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, reservedFlightNum);
+                            System.out.println("Flight reservation canceled for number " + flightNum);
+                        }
+                    }
+                    System.out.println("Rollback completes for customer:" + customerID );
+                    return false;
                 }
             }
 
@@ -179,9 +173,18 @@ public class Middleware extends ResourceManager {
                 boolean carReserved = carManager.reserveCar(customerID, location);
                 if (carReserved) {
                     System.out.println("Car reserved at " + location + " for customer " + customerID);
-                    success = true;
                 } else {
                     System.out.println("Failed to reserve car at " + location + " for customer " + customerID);
+                    System.out.println("Rollback:");
+                    if(!reservedFlights.isEmpty()){
+                        for(int flightNum : reservedFlights){
+                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
+                            System.out.println("Flight reservation canceled for number " + flightNum);
+                        }
+                    }
+                    System.out.println("Rollback completes for customer:" + customerID );
+
+                    return false;
                 }
             }
 
@@ -190,23 +193,37 @@ public class Middleware extends ResourceManager {
                 boolean roomReserved = roomManager.reserveRoom(customerID, location);
                 if (roomReserved) {
                     System.out.println("Room reserved at " + location + " for customer " + customerID);
-                    success = true;
                 } else {
                     System.out.println("Failed to reserve room at " + location + " for customer " + customerID);
+                    System.out.println("Rollback:");
+                    // rollback previous registered flights
+                    if(!reservedFlights.isEmpty()){
+                        for(int flightNum : reservedFlights){
+                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
+                            System.out.println("Flight reservation canceled for number " + flightNum);
+                        }
+                    }
+                    // if also reserving a car, rollback previous registered car
+                    if(reserveCar){
+                        boolean carCanceled = carManager.cancelReserveCar(customerID, location);
+                        System.out.println("Car reservation canceled at location " + location);
+                    }
+                    System.out.println("Rollback completes for customer:" + customerID );
+
+                    return false;
                 }
             }
         }finally {
-            // release locks in reverse order
-            releaseLocks();
+            middlewireLock.unlock();
         }
 
-        return success;
+        return true;
     }
 
     @Override
     public boolean deleteCustomer(int customerID) throws RemoteException {
         // Delete customer from all managers
-        acquireLocks();
+        middlewireLock.lock();
 
         boolean flightDeleted, carDeleted, roomDeleted;
         try{
@@ -216,7 +233,7 @@ public class Middleware extends ResourceManager {
             roomDeleted = roomManager.deleteCustomer(customerID);
 
         }finally {
-            releaseLocks();
+            middlewireLock.unlock();
         }
 
         return flightDeleted && carDeleted && roomDeleted;
@@ -224,7 +241,7 @@ public class Middleware extends ResourceManager {
 
     @Override
     public int newCustomer() throws RemoteException{
-        acquireLocks();
+        middlewireLock.lock();
         int customerID = -1;
         try{
             customerID = flightManager.newCustomer();
@@ -247,14 +264,14 @@ public class Middleware extends ResourceManager {
             }
 
         }finally {
-            releaseLocks();
+            middlewireLock.unlock();
         }
         return customerID;
     }
 
     @Override
     public boolean newCustomer(int customerID) throws RemoteException{
-        acquireLocks();
+        middlewireLock.lock();
         try{
             boolean flightCreated = flightManager.newCustomer(customerID);
             boolean carCreated = false;
@@ -274,9 +291,8 @@ public class Middleware extends ResourceManager {
                 return false;
             }
         }finally {
-            releaseLocks();
+            middlewireLock.unlock();
         }
-
         return true;
     }
 
@@ -306,19 +322,14 @@ public class Middleware extends ResourceManager {
     @Override
     public String queryCustomerInfo(int customerID) throws RemoteException{
 
-        flightLock.lock();
-        carLock.lock();
-        roomLock.lock();
+        middlewireLock.lock();
         String flightInfo, carInfo, roomInfo;
         try{
-            // Fetch customer information from all managers
-            flightInfo = flightManager.queryCustomerInfo(customerID);
-            carInfo = carManager.queryCustomerInfo(customerID);
-            roomInfo = roomManager.queryCustomerInfo(customerID);
+            flightInfo = "Flights " + flightManager.queryCustomerInfo(customerID);
+            carInfo = "Cars " + carManager.queryCustomerInfo(customerID);
+            roomInfo = "Rooms " + roomManager.queryCustomerInfo(customerID);
         }finally {
-            flightLock.unlock();
-            carLock.unlock();
-            roomLock.unlock();
+            middlewireLock.unlock();
         }
 
         return flightInfo + carInfo + roomInfo;
