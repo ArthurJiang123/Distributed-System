@@ -274,16 +274,8 @@ public class Middleware extends ResourceManager {
         middlewireLock.lock();
         try{
             boolean flightCreated = flightManager.newCustomer(customerID);
-            boolean carCreated = false;
-            boolean roomCreated = false;
-            try{
-                carCreated = carManager.newCustomer(customerID);
-                roomCreated = roomManager.newCustomer(customerID);
-
-            }catch (RemoteException  e){
-                System.err.println("Error creating customer in carManager or roomManager: " + e.getMessage());
-                return false;
-            }
+            boolean carCreated = carManager.newCustomer(customerID);;
+            boolean roomCreated = roomManager.newCustomer(customerID);
 
             if (!flightCreated || !carCreated || !roomCreated) {
                 rollbackAddingCustomer(customerID);

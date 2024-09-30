@@ -27,6 +27,10 @@ public enum Command {
 	ReserveCar("Reserve a car for a customer at a location", "<CustomerID>,<Location>"),
 	ReserveRoom("Reserve a room for a customer at a location", "<CustomerID>,<Location>"),
 
+	CancelReserveFlight("Cancel a flight Reservation for a customer", "<CustomerID>,<FlightNumber>"),
+	CancelReserveCar("Cancel a car Reservation for a customer at a location", "<CustomerID>,<Location>"),
+	CancelReserveRoom("Cancel a room Reservation for a customer at a location", "<CustomerID>,<Location>"),
+
 	Bundle("Book N flight numbers, and optionally a room and/or car at a location", "<CustomerID>,<FlightNumber1>...<FlightNumberN>,<Location>,<Car-Y/N>,<Room-Y/N>"),
 
 	Quit("Exit the client application", "");

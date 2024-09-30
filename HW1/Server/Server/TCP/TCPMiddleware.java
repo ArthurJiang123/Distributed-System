@@ -1,18 +1,13 @@
 package Server.TCP;
 
-/*
- *  Handle requests from the client.
- *  Delegate requests to the appropriate resource manager.
- *  Uses ServerScoket to listen for client requests.
- *  Forwarding is done using TCP sockets.
- * */
-
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+/**
+ * Middleware does not need to extend ResourceManager anymore in TCP version.
+ * Thus, it is designed as a standalone class for simplicity.
+ */
 public class TCPMiddleware{
 
     private static final int port = 4031;
@@ -57,7 +52,7 @@ public class TCPMiddleware{
             // accept client connection
             while(true){
                 // listens and waits for a connection
-                // returned socket is used for communicating with the client
+                // created and returned socket is used for communicating with the client
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("A new client is connected...");
 

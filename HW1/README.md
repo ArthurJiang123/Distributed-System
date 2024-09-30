@@ -1,5 +1,8 @@
-# comp512 programming assignment 1
-If you want to compile the code multiple times, first clean the class files by running:
+# COMP512 programming assignment 1
+#### Jiahao Jiang, Yuanqing Hao
+#### Group 31
+If you want to compile the code multiple times, 
+clean the class files before re-compiling:
 ```
 cd Server
 make clean
@@ -9,19 +12,18 @@ make clean
 To compile the code:
 ```
 cd Client
-make request-classes.jar
+make
 cd ../Server
-make && make compile-server
-cd ../Client
-make client-core
+make
 ```
 ## TCP
-To run the TCP client(default host: tr-open-08)
-(defalt port: 3031):
+To run the TCP client
+(middleware host: tr-open-08)
+(middleware port: 4031):
 
 ```
 cd Client
-./run_tcpclient.sh [<optional_host] [<optional_port>]
+./run_tcpclient.sh [<host>] [<port>]
 ```
 To run the TCP servers(tcp middleware run on tr-open-08, managers run on tr-open-05 to 07):
 ```
@@ -34,18 +36,18 @@ To run the TCP middleware alone:
 ```
 To run the TCP resource manager alone:
 ```
-./run_tcpserver.sh [Flights|Cars|Rooms]
+./run_tcpserver.sh [<serverName>]
 ```
 ## RMI
 To run the RMI resource manager:
+(default port: 3031)
 ```
 cd Server/
-./run_server.sh [<rmi_name>] # starts a single ResourceManager
-./run_servers.sh # convenience script for starting multiple resource managers
+./run_server.sh [<serverName>] # starts a single ResourceManager
+./run_servers.sh # starting multiple resource managers
 ```
-
 To run the RMI client:
 ```
 cd Client
-./run_client.sh [<server_hostname> [<server_rmi_name>]]
+./run_client.sh [<serverHostname>] [<serverName>]
 ```

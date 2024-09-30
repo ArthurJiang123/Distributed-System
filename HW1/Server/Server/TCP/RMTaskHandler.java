@@ -100,6 +100,14 @@ class RMTaskHandler extends Thread {
                     );
                     return new ResponsePacket(flightReserved, flightReserved ? "Flight reserved successfully." : "Failed to reserve flight.");
 
+                case CancelReserveFlight:
+                    boolean flightCanceled = resourceManager.cancelReserveFlight(
+                            Integer.parseInt(arguments.get(1)),
+                            Integer.parseInt(arguments.get(2))
+                    );
+                    return new ResponsePacket(flightCanceled, flightCanceled ? "Flight canceled successfully." : "Failed to cancel flight.");
+
+
                 case DeleteFlight:
                     boolean flightDeleted = resourceManager.deleteFlight(Integer.parseInt(arguments.get(1)));
                     return new ResponsePacket(flightDeleted, flightDeleted ? "Flight deleted successfully." : "Failed to delete flight.");
@@ -127,6 +135,14 @@ class RMTaskHandler extends Thread {
                     );
                     return new ResponsePacket(carReserved, carReserved ? "Car reserved successfully." : "Failed to reserve car.");
 
+                case CancelReserveCar:
+                    boolean carCanceled = resourceManager.cancelReserveCar(
+                            Integer.parseInt(arguments.get(1)),
+                            arguments.get(2)
+                    );
+                    return new ResponsePacket(carCanceled, carCanceled ? "Car canceled successfully." : "Failed to cancel car.");
+
+
                 case DeleteCars:
                     boolean carsDeleted = resourceManager.deleteCars(arguments.get(1));
                     return new ResponsePacket(carsDeleted, carsDeleted ? "Cars deleted successfully." : "Failed to delete cars.");
@@ -153,6 +169,14 @@ class RMTaskHandler extends Thread {
                             arguments.get(2)
                     );
                     return new ResponsePacket(roomReserved, roomReserved ? "Room reserved successfully." : "Failed to reserve room.");
+
+                case CancelReserveRoom:
+                    boolean roomCanceled = resourceManager.cancelReserveRoom(
+                            Integer.parseInt(arguments.get(1)),
+                            arguments.get(2)
+                    );
+                    return new ResponsePacket(roomCanceled, roomCanceled ? "Room cancelled successfully." : "Failed to cancel room.");
+
 
                 case DeleteRooms:
                     boolean roomsDeleted = resourceManager.deleteRooms(arguments.get(1));
