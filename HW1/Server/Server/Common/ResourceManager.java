@@ -37,68 +37,64 @@ public class ResourceManager implements IResourceManager
 	// Reads a data item
 	protected RMItem readData(String key)
 	{
-		ReentrantLock lock = getResourceLock(key);
-		lock.lock();
-
-		try{
+		synchronized (m_data){
 			RMItem item = m_data.get(key);
 			if (item != null) {
 				return (RMItem)item.clone();
 			}
 			return null;
-		}finally {
-			lock.unlock();
 		}
 	}
 
 	// Writes a data item
 	protected void writeData(String key, RMItem value)
 	{
-		ReentrantLock lock = getResourceLock(key);
-		lock.lock();
-		try{
+		synchronized (m_data){
 			m_data.put(key, value);
-		}finally {
-			lock.unlock();
 		}
 	}
 
 	// Remove the item out of storage
 	protected void removeData(String key)
 	{
-		ReentrantLock lock = getResourceLock(key);
-		lock.lock();
-		try{
+		synchronized (m_data){
 			m_data.remove(key);
-		}finally {
-			lock.unlock();
 		}
+
 	}
 
 	// Deletes the encar item
 	protected boolean deleteItem(String key)
 	{
 		Trace.info("RM::deleteItem(" + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(key);
-		// Check if there is such an item in the storage
-		if (curObj == null)
-		{
-			Trace.warn("RM::deleteItem(" + key + ") failed--item doesn't exist");
-			return false;
-		}
-		else
-		{
-			if (curObj.getReserved() == 0)
+
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+
+		try{
+			ReservableItem curObj = (ReservableItem)readData(key);
+			// Check if there is such an item in the storage
+			if (curObj == null)
 			{
-				removeData(curObj.getKey());
-				Trace.info("RM::deleteItem(" + key + ") item deleted");
-				return true;
+				Trace.warn("RM::deleteItem(" + key + ") failed--item doesn't exist");
+				return false;
 			}
 			else
 			{
-				Trace.info("RM::deleteItem(" + key + ") item can't be deleted because some customers have reserved it");
-				return false;
+				if (curObj.getReserved() == 0)
+				{
+					removeData(curObj.getKey());
+					Trace.info("RM::deleteItem(" + key + ") item deleted");
+					return true;
+				}
+				else
+				{
+					Trace.info("RM::deleteItem(" + key + ") item can't be deleted because some customers have reserved it");
+					return false;
+				}
 			}
+		}finally {
+			lock.unlock();
 		}
 	}
 
@@ -106,110 +102,180 @@ public class ResourceManager implements IResourceManager
 	protected int queryNum(String key)
 	{
 		Trace.info("RM::queryNum(" + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(key);
-		int value = 0;  
-		if (curObj != null)
-		{
-			value = curObj.getCount();
+
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+
+		try{
+			ReservableItem curObj = (ReservableItem)readData(key);
+			int value = 0;
+			if (curObj != null)
+			{
+				value = curObj.getCount();
+			}
+			Trace.info("RM::queryNum(" + key + ") returns count=" + value);
+			return value;
+		}finally {
+			lock.unlock();
 		}
-		Trace.info("RM::queryNum(" + key + ") returns count=" + value);
-		return value;
-	}    
+	}
 
 	// Query the price of an item
 	protected int queryPrice(String key)
 	{
 		Trace.info("RM::queryPrice(" + key + ") called");
-		ReservableItem curObj = (ReservableItem)readData(key);
-		int value = 0; 
-		if (curObj != null)
-		{
-			value = curObj.getPrice();
+
+		ReentrantLock lock = getResourceLock(key);
+		lock.lock();
+
+		try{
+
+			ReservableItem curObj = (ReservableItem)readData(key);
+			int value = 0;
+			if (curObj != null)
+			{
+				value = curObj.getPrice();
+			}
+			Trace.info("RM::queryPrice(" + key + ") returns cost=$" + value);
+			return value;
+
+		}finally {
+			lock.unlock();
 		}
-		Trace.info("RM::queryPrice(" + key + ") returns cost=$" + value);
-		return value;        
+
 	}
 
 	// Reserve an item
 	protected boolean reserveItem(int customerID, String key, String location)
 	{
 
-		Trace.info("RM::reserveItem(customer=" + customerID + ", " + key + ", " + location + ") called" );        
+		Trace.info("RM::reserveItem(customer=" + customerID + ", " + key + ", " + location + ") called" );
 
-		// atomically read a specific customer
-		Customer customer = (Customer)readData(Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ")  failed--customer doesn't exist");
-			return false;
-		} 
+		// Acquire locks on both customer and item
+		// at the same time
+		// customer lock -> item lock
+		ReentrantLock customerLock = getResourceLock(Customer.getKey(customerID));
+		ReentrantLock itemLock = getResourceLock(key);
 
-		// Atomically check if the item is available
-		ReservableItem item = (ReservableItem)readData(key);
-		if (item == null)
-		{
-			Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") failed--item doesn't exist");
-			return false;
+		boolean customerLocked = false;
+		boolean itemLocked = false;
+
+		try{
+			customerLock.lock();
+			customerLocked = true;
+
+			itemLock.lock();
+			itemLocked = true;
+
+			Customer customer = (Customer)readData(Customer.getKey(customerID));
+
+			Thread.sleep(2000);
+
+			if (customer == null)
+			{
+				Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ")  failed--customer doesn't exist");
+				return false;
+			}
+
+			ReservableItem item = (ReservableItem)readData(key);
+			if (item == null)
+			{
+				Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") failed--item doesn't exist");
+				return false;
+			}
+			else if (item.getCount() == 0)
+			{
+				Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") failed--No more items");
+				return false;
+			}
+			else
+			{
+				customer.reserve(key, location, item.getPrice());
+				writeData(customer.getKey(), customer);
+
+				// Decrease the number of available items in the storage
+				item.setCount(item.getCount() - 1);
+				item.setReserved(item.getReserved() + 1);
+				writeData(item.getKey(), item);
+
+				Trace.info("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") succeeded");
+				return true;
+			}
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		} finally {
+			// release order:
+			// item lock -> customer lock
+			if (itemLocked) {
+				itemLock.unlock();
+			}
+			if (customerLocked) {
+				customerLock.unlock();
+			}
 		}
-		else if (item.getCount() == 0)
-		{
-			Trace.warn("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") failed--No more items");
-			return false;
-		}
-		else
-		{            
-			customer.reserve(key, location, item.getPrice());        
-			writeData(customer.getKey(), customer);
-
-			// Decrease the number of available items in the storage
-			item.setCount(item.getCount() - 1);
-			item.setReserved(item.getReserved() + 1);
-			writeData(item.getKey(), item);
-
-			Trace.info("RM::reserveItem(" + customerID + ", " + key + ", " + location + ") succeeded");
-			return true;
-		}        
 	}
 
 	// helper methods to cancel a reservation of an item
 	protected boolean cancelReserveItem(int customerID, String key, String location)
 	{
-
 		Trace.info("RM::cancelReserveItem(customer=" + customerID + ", " + key + ", " + location + ") called" );
 
-		// atomically read a specific customer
-		Customer customer = (Customer)readData(Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ")  failed--customer doesn't exist");
-			return false;
-		}
+		// Acquire locks on both customer and item
+		// at the same time
+		ReentrantLock customerLock = getResourceLock(Customer.getKey(customerID));
+		ReentrantLock itemLock = getResourceLock(key);
 
-		// Atomically check if the item is available
-		ReservableItem item = (ReservableItem)readData(key);
-		if (item == null)
-		{
-			Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") failed--item doesn't exist initially");
-			return false;
-		}
-		else
-		{
-			// cancel the reservation
-			boolean success = customer.cancelReserve(key, location, item.getPrice());
+		boolean customerLocked = false;
+		boolean itemLocked = false;
 
-			writeData(customer.getKey(), customer);
+		try{
+			customerLock.lock();
+			customerLocked = true;
 
-			// increase the available item only when actually canceled a reservation
-			if(success){
-				// Increase the number of available items in the storage
-				item.setCount(item.getCount() + 1);
-				item.setReserved(item.getReserved() - 1);
-				writeData(item.getKey(), item);
+			itemLock.lock();
+			itemLocked = true;
+			// atomically read a specific customer
+			Customer customer = (Customer)readData(Customer.getKey(customerID));
+			if (customer == null)
+			{
+				Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ")  failed--customer doesn't exist");
+				return false;
 			}
 
-			Trace.info("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") succeeded");
-			return true;
+			// Atomically check if the item is available
+			ReservableItem item = (ReservableItem)readData(key);
+			if (item == null)
+			{
+				Trace.warn("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") failed--item doesn't exist initially");
+				return false;
+			}
+			else
+			{
+				// cancel the reservation
+				boolean success = customer.cancelReserve(key, location, item.getPrice());
+
+				writeData(customer.getKey(), customer);
+
+				// increase the available item only when actually canceled a reservation
+				if(success){
+					// Increase the number of available items in the storage
+					item.setCount(item.getCount() + 1);
+					item.setReserved(item.getReserved() - 1);
+					writeData(item.getKey(), item);
+				}
+
+				Trace.info("RM::cancelReserveItem(" + customerID + ", " + key + ", " + location + ") succeeded");
+				return true;
+			}
+		}finally {
+			if (itemLocked) {
+				itemLock.unlock();
+			}
+			if (customerLocked) {
+				customerLock.unlock();
+			}
 		}
+
 	}
 
 	// only available for middleware to use
@@ -229,27 +295,37 @@ public class ResourceManager implements IResourceManager
 	// NOTE: if flightPrice <= 0 and the flight already exists, it maintains its current price
 	public boolean addFlight(int flightNum, int flightSeats, int flightPrice) throws RemoteException
 	{
+
 		Trace.info("RM::addFlight(" + flightNum + ", " + flightSeats + ", $" + flightPrice + ") called");
-		Flight curObj = (Flight)readData(Flight.getKey(flightNum));
-		if (curObj == null)
-		{
-			// Doesn't exist yet, add it
-			Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
-			writeData(newObj.getKey(), newObj);
-			Trace.info("RM::addFlight() created new flight " + flightNum + ", seats=" + flightSeats + ", price=$" + flightPrice);
-		}
-		else
-		{
-			// Add seats to existing flight and update the price if greater than zero
-			curObj.setCount(curObj.getCount() + flightSeats);
-			if (flightPrice > 0)
+
+		ReentrantLock lock = getResourceLock(Flight.getKey(flightNum));
+		lock.lock();
+
+		try{
+
+			Flight curObj = (Flight)readData(Flight.getKey(flightNum));
+			if (curObj == null)
 			{
-				curObj.setPrice(flightPrice);
+				// Doesn't exist yet, add it
+				Flight newObj = new Flight(flightNum, flightSeats, flightPrice);
+				writeData(newObj.getKey(), newObj);
+				Trace.info("RM::addFlight() created new flight " + flightNum + ", seats=" + flightSeats + ", price=$" + flightPrice);
 			}
-			writeData(curObj.getKey(), curObj);
-			Trace.info("RM::addFlight() modified existing flight " + flightNum + ", seats=" + curObj.getCount() + ", price=$" + flightPrice);
+			else
+			{
+				// Add seats to existing flight and update the price if greater than zero
+				curObj.setCount(curObj.getCount() + flightSeats);
+				if (flightPrice > 0)
+				{
+					curObj.setPrice(flightPrice);
+				}
+				writeData(curObj.getKey(), curObj);
+				Trace.info("RM::addFlight() modified existing flight " + flightNum + ", seats=" + curObj.getCount() + ", price=$" + flightPrice);
+			}
+			return true;
+		}finally {
+			lock.unlock();
 		}
-		return true;
 	}
 
 	// Create a new car location or add cars to an existing location
@@ -257,26 +333,34 @@ public class ResourceManager implements IResourceManager
 	public boolean addCars(String location, int count, int price) throws RemoteException
 	{
 		Trace.info("RM::addCars(" + location + ", " + count + ", $" + price + ") called");
-		Car curObj = (Car)readData(Car.getKey(location));
-		if (curObj == null)
-		{
-			// Car location doesn't exist yet, add it
-			Car newObj = new Car(location, count, price);
-			writeData(newObj.getKey(), newObj);
-			Trace.info("RM::addCars() created new location " + location + ", count=" + count + ", price=$" + price);
-		}
-		else
-		{
-			// Add count to existing car location and update price if greater than zero
-			curObj.setCount(curObj.getCount() + count);
-			if (price > 0)
+
+		ReentrantLock lock = getResourceLock(Car.getKey(location));
+		lock.lock();
+
+		try{
+			Car curObj = (Car)readData(Car.getKey(location));
+			if (curObj == null)
 			{
-				curObj.setPrice(price);
+				// Car location doesn't exist yet, add it
+				Car newObj = new Car(location, count, price);
+				writeData(newObj.getKey(), newObj);
+				Trace.info("RM::addCars() created new location " + location + ", count=" + count + ", price=$" + price);
 			}
-			writeData(curObj.getKey(), curObj);
-			Trace.info("RM::addCars() modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
+			else
+			{
+				// Add count to existing car location and update price if greater than zero
+				curObj.setCount(curObj.getCount() + count);
+				if (price > 0)
+				{
+					curObj.setPrice(price);
+				}
+				writeData(curObj.getKey(), curObj);
+				Trace.info("RM::addCars() modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
+			}
+			return true;
+		}finally {
+			lock.unlock();
 		}
-		return true;
 	}
 
 	// Create a new room location or add rooms to an existing location
@@ -284,24 +368,32 @@ public class ResourceManager implements IResourceManager
 	public boolean addRooms(String location, int count, int price) throws RemoteException
 	{
 		Trace.info("RM::addRooms(" + location + ", " + count + ", $" + price + ") called");
-		Room curObj = (Room)readData(Room.getKey(location));
-		if (curObj == null)
-		{
-			// Room location doesn't exist yet, add it
-			Room newObj = new Room(location, count, price);
-			writeData(newObj.getKey(), newObj);
-			Trace.info("RM::addRooms() created new room location " + location + ", count=" + count + ", price=$" + price);
-		} else {
-			// Add count to existing object and update price if greater than zero
-			curObj.setCount(curObj.getCount() + count);
-			if (price > 0)
+
+		ReentrantLock lock = getResourceLock(Room.getKey(location));
+		lock.lock();
+
+		try{
+			Room curObj = (Room)readData(Room.getKey(location));
+			if (curObj == null)
 			{
-				curObj.setPrice(price);
+				// Room location doesn't exist yet, add it
+				Room newObj = new Room(location, count, price);
+				writeData(newObj.getKey(), newObj);
+				Trace.info("RM::addRooms() created new room location " + location + ", count=" + count + ", price=$" + price);
+			} else {
+				// Add count to existing object and update price if greater than zero
+				curObj.setCount(curObj.getCount() + count);
+				if (price > 0)
+				{
+					curObj.setPrice(price);
+				}
+				writeData(curObj.getKey(), curObj);
+				Trace.info("RM::addRooms() modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
 			}
-			writeData(curObj.getKey(), curObj);
-			Trace.info("RM::addRooms() modified existing location " + location + ", count=" + curObj.getCount() + ", price=$" + price);
+			return true;
+		}finally {
+			lock.unlock();
 		}
-		return true;
 	}
 
 	// Deletes flight
@@ -361,18 +453,25 @@ public class ResourceManager implements IResourceManager
 	public String queryCustomerInfo(int customerID) throws RemoteException
 	{
 		Trace.info("RM::queryCustomerInfo(" + customerID + ") called");
-		Customer customer = (Customer)readData(Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::queryCustomerInfo(" + customerID + ") failed--customer doesn't exist");
-			// NOTE: don't change this--WC counts on this value indicating a customer does not exist...
-			return "";
-		}
-		else
-		{
-			Trace.info("RM::queryCustomerInfo(" + customerID + ")");
-			System.out.println(customer.getBill());
-			return customer.getBill();
+
+		ReentrantLock lock = getResourceLock(Customer.getKey(customerID));
+		lock.lock();
+		try{
+			Customer customer = (Customer)readData(Customer.getKey(customerID));
+			if (customer == null)
+			{
+				Trace.warn("RM::queryCustomerInfo(" + customerID + ") failed--customer doesn't exist");
+				// NOTE: don't change this--WC counts on this value indicating a customer does not exist...
+				return "";
+			}
+			else
+			{
+				Trace.info("RM::queryCustomerInfo(" + customerID + ")");
+				System.out.println(customer.getBill());
+				return customer.getBill();
+			}
+		}finally {
+			lock.unlock();
 		}
 	}
 
@@ -382,59 +481,84 @@ public class ResourceManager implements IResourceManager
 		// Generate a globally unique ID for the new customer; if it generates duplicates for you, then adjust
 		int cid = Integer.parseInt(String.valueOf(Calendar.getInstance().get(Calendar.MILLISECOND)) +
 			String.valueOf(Math.round(Math.random() * 100 + 1)));
-		Customer customer = new Customer(cid);
-		writeData(customer.getKey(), customer);
-		Trace.info("RM::newCustomer(" + cid + ") returns ID=" + cid);
-		return cid;
+
+		ReentrantLock lock = getResourceLock(Customer.getKey(cid));
+		lock.lock();
+
+		try{
+			Customer customer = new Customer(cid);
+			writeData(customer.getKey(), customer);
+
+			Trace.info("RM::newCustomer(" + cid + ") returns ID=" + cid);
+			return cid;
+		}finally {
+			lock.unlock();
+		}
 	}
 
 	public boolean newCustomer(int customerID) throws RemoteException
 	{
 		Trace.info("RM::newCustomer(" + customerID + ") called");
-		Customer customer = (Customer)readData(Customer.getKey(customerID));
-		if (customer == null)
-		{
-			customer = new Customer(customerID);
-			writeData(customer.getKey(), customer);
-			Trace.info("RM::newCustomer(" + customerID + ") created a new customer");
-			return true;
-		}
-		else
-		{
-			Trace.info("INFO: RM::newCustomer(" + customerID + ") failed--customer already exists");
-			return false;
+
+		ReentrantLock lock = getResourceLock(Customer.getKey(customerID));
+		lock.lock();
+		try{
+			Customer customer = (Customer)readData(Customer.getKey(customerID));
+			if (customer == null)
+			{
+				customer = new Customer(customerID);
+				writeData(customer.getKey(), customer);
+				Trace.info("RM::newCustomer(" + customerID + ") created a new customer");
+				return true;
+			}
+			else
+			{
+				Trace.info("INFO: RM::newCustomer(" + customerID + ") failed--customer already exists");
+				return false;
+			}
+		}finally {
+			lock.unlock();
 		}
 	}
 
 	public boolean deleteCustomer(int customerID) throws RemoteException
 	{
 		Trace.info("RM::deleteCustomer(" + customerID + ") called");
-		Customer customer = (Customer)readData(Customer.getKey(customerID));
-		if (customer == null)
-		{
-			Trace.warn("RM::deleteCustomer(" + customerID + ") failed--customer doesn't exist");
-			return false;
-		}
-		else
-		{            
-			// Increase the reserved numbers of all reservable items which the customer reserved. 
- 			RMHashMap reservations = customer.getReservations();
-			for (String reservedKey : reservations.keySet())
-			{        
-				ReservedItem reserveditem = customer.getReservedItem(reservedKey);
-				Trace.info("RM::deleteCustomer(" + customerID + ") has reserved " + reserveditem.getKey() + " " +  reserveditem.getCount() +  " times");
-				ReservableItem item  = (ReservableItem)readData(reserveditem.getKey());
-				Trace.info("RM::deleteCustomer(" + customerID + ") has reserved " + reserveditem.getKey() + " which is reserved " +  item.getReserved() +  " times and is still available " + item.getCount() + " times");
-				item.setReserved(item.getReserved() - reserveditem.getCount());
-				item.setCount(item.getCount() + reserveditem.getCount());
-				writeData(item.getKey(), item);
-			}
 
-			// Remove the customer from the storage
-			removeData(customer.getKey());
-			Trace.info("RM::deleteCustomer(" + customerID + ") succeeded");
-			return true;
+		ReentrantLock lock = getResourceLock(Customer.getKey(customerID));
+		lock.lock();
+
+		try{
+			Customer customer = (Customer)readData(Customer.getKey(customerID));
+			if (customer == null)
+			{
+				Trace.warn("RM::deleteCustomer(" + customerID + ") failed--customer doesn't exist");
+				return false;
+			}
+			else
+			{
+				// Increase the reserved numbers of all reservable items which the customer reserved.
+				RMHashMap reservations = customer.getReservations();
+				for (String reservedKey : reservations.keySet())
+				{
+					ReservedItem reserveditem = customer.getReservedItem(reservedKey);
+					Trace.info("RM::deleteCustomer(" + customerID + ") has reserved " + reserveditem.getKey() + " " +  reserveditem.getCount() +  " times");
+					ReservableItem item  = (ReservableItem)readData(reserveditem.getKey());
+					Trace.info("RM::deleteCustomer(" + customerID + ") has reserved " + reserveditem.getKey() + " which is reserved " +  item.getReserved() +  " times and is still available " + item.getCount() + " times");
+					item.setReserved(item.getReserved() - reserveditem.getCount());
+					item.setCount(item.getCount() + reserveditem.getCount());
+					writeData(item.getKey(), item);
+				}
+
+				// Remove the customer from the storage
+				removeData(customer.getKey());
+				Trace.info("RM::deleteCustomer(" + customerID + ") succeeded");
+				return true;
+			}
+		}finally {
+			lock.unlock();
 		}
+
 	}
 
 	// Adds flight reservation to this customer

@@ -9,9 +9,6 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Vector;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 public class Middleware extends ResourceManager {
 
     private static String s_serverName = "Middleware";
@@ -23,8 +20,6 @@ public class Middleware extends ResourceManager {
     private IResourceManager flightManager;
     private IResourceManager carManager;
     private IResourceManager roomManager;
-
-    private final Lock middlewireLock = new ReentrantLock();
 
 
     public Middleware(String p_name, IResourceManager flightManager, IResourceManager carManager, IResourceManager roomManager) {
@@ -138,14 +133,13 @@ public class Middleware extends ResourceManager {
     @Override
     public boolean bundle(int customerID, Vector<String> flightNumbers, String location, boolean reserveCar, boolean reserveRoom) throws RemoteException {
 
-        // first acquire locks when needing multiple managers
-        middlewireLock.lock();
 
         System.out.println("Starting bundle reservation for customer: " + customerID);
         System.out.println("Location: " + location + ", Reserve Car: " + reserveCar + ", Reserve Room: " + reserveRoom);
 
         Vector<Integer> reservedFlights = new Vector<>();
         try{
+
             // Try to reserve flights
             for (String flightNumStr : flightNumbers) {
                 int flightNum = Integer.parseInt(flightNumStr);
@@ -213,86 +207,68 @@ public class Middleware extends ResourceManager {
                     return false;
                 }
             }
-        }finally {
-            middlewireLock.unlock();
+        }catch (RemoteException e){
+            System.err.println("Failed to rollback bundle: " + e.getMessage());
         }
+
 
         return true;
     }
 
     @Override
     public boolean deleteCustomer(int customerID) throws RemoteException {
-        // Delete customer from all managers
-        middlewireLock.lock();
+
 
         boolean flightDeleted, carDeleted, roomDeleted;
-        try{
 
-            flightDeleted = flightManager.deleteCustomer(customerID);
-            carDeleted = carManager.deleteCustomer(customerID);
-            roomDeleted = roomManager.deleteCustomer(customerID);
 
-        }finally {
-            middlewireLock.unlock();
-        }
+        flightDeleted = flightManager.deleteCustomer(customerID);
+        carDeleted = carManager.deleteCustomer(customerID);
+        roomDeleted = roomManager.deleteCustomer(customerID);
+
 
         return flightDeleted && carDeleted && roomDeleted;
     }
 
     @Override
     public int newCustomer() throws RemoteException{
-        middlewireLock.lock();
         int customerID = -1;
+
+        customerID = flightManager.newCustomer();
+
+        boolean carCreated = false;
+        boolean roomCreated = false;
+
         try{
-            customerID = flightManager.newCustomer();
-
-            boolean carCreated = false;
-            boolean roomCreated = false;
-
-            try{
-                carCreated = carManager.newCustomer(customerID);
-                roomCreated = roomManager.newCustomer(customerID);
-            }catch (RemoteException  e){
-                System.err.println("Error creating customer in one of the ResourceManagers: " + e.getMessage());
-                return -1;
-            }
-
-            if(!carCreated || !roomCreated){
-                rollbackAddingCustomer(customerID);
-                System.err.println("Failed to create customer in all ResourceManagers.");
-                return -1;
-            }
-
-        }finally {
-            middlewireLock.unlock();
+            carCreated = carManager.newCustomer(customerID);
+            roomCreated = roomManager.newCustomer(customerID);
+        }catch (RemoteException  e){
+            System.err.println("Error creating customer in one of the ResourceManagers: " + e.getMessage());
+            return -1;
         }
+
+        if(!carCreated || !roomCreated){
+            rollbackAddingCustomer(customerID);
+            System.err.println("Failed to create customer in all ResourceManagers.");
+            return -1;
+        }
+
         return customerID;
     }
 
     @Override
     public boolean newCustomer(int customerID) throws RemoteException{
-        middlewireLock.lock();
-        try{
-            boolean flightCreated = flightManager.newCustomer(customerID);
-            boolean carCreated = false;
-            boolean roomCreated = false;
-            try{
-                carCreated = carManager.newCustomer(customerID);
-                roomCreated = roomManager.newCustomer(customerID);
 
-            }catch (RemoteException  e){
-                System.err.println("Error creating customer in carManager or roomManager: " + e.getMessage());
-                return false;
-            }
+        boolean flightCreated = flightManager.newCustomer(customerID);
+        boolean carCreated = carManager.newCustomer(customerID);;
+        boolean roomCreated = roomManager.newCustomer(customerID);
 
-            if (!flightCreated || !carCreated || !roomCreated) {
-                rollbackAddingCustomer(customerID);
-                System.err.println("Failed to create customer across all ResourceManagers.");
-                return false;
-            }
-        }finally {
-            middlewireLock.unlock();
+        if (!flightCreated || !carCreated || !roomCreated) {
+            rollbackAddingCustomer(customerID);
+            System.err.println("Failed to create customer across all ResourceManagers.");
+            return false;
         }
+
         return true;
     }
 
@@ -322,15 +298,12 @@ public class Middleware extends ResourceManager {
     @Override
     public String queryCustomerInfo(int customerID) throws RemoteException{
 
-        middlewireLock.lock();
         String flightInfo, carInfo, roomInfo;
-        try{
-            flightInfo = "Flights " + flightManager.queryCustomerInfo(customerID);
-            carInfo = "Cars " + carManager.queryCustomerInfo(customerID);
-            roomInfo = "Rooms " + roomManager.queryCustomerInfo(customerID);
-        }finally {
-            middlewireLock.unlock();
-        }
+
+        flightInfo = "Flights " + flightManager.queryCustomerInfo(customerID);
+        carInfo = "Cars " + carManager.queryCustomerInfo(customerID);
+        roomInfo = "Rooms " + roomManager.queryCustomerInfo(customerID);
+
 
         return flightInfo + carInfo + roomInfo;
     }
