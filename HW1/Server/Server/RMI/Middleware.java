@@ -9,8 +9,6 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Vector;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class Middleware extends ResourceManager {
 
@@ -20,9 +18,9 @@ public class Middleware extends ResourceManager {
     private static int port = 3031;
 
     // managers
-    private IResourceManager flightManager;
-    private IResourceManager carManager;
-    private IResourceManager roomManager;
+    private final IResourceManager flightManager;
+    private final IResourceManager carManager;
+    private final IResourceManager roomManager;
 
 
     public Middleware(String p_name, IResourceManager flightManager, IResourceManager carManager, IResourceManager roomManager) {
