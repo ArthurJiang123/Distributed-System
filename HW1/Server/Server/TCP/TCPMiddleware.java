@@ -13,9 +13,7 @@ public class TCPMiddleware{
     private static final int port = 4031;
     private static final int rmPort = 4031;
 
-
     public TCPMiddleware() {}
-
 
     /**
      * Middleware bootstrap

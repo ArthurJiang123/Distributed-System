@@ -28,13 +28,13 @@ cd Client
 To run the TCP servers(tcp middleware run on tr-open-08, managers run on tr-open-05 to 07):
 ```
 cd Server
-./tcp_servers.sh
+./run_tcpservers.sh
 ```
-To run the TCP middleware alone:
+To run a single TCP middleware:
 ```
 ./run_tcpmiddleware.sh <FlightHost> <CarHost> <RoomHost>
 ```
-To run the TCP resource manager alone:
+To run a single TCP resource manager:
 ```
 ./run_tcpserver.sh [<serverName>]
 ```

@@ -25,18 +25,6 @@ class MiddlewareTaskHandler extends Thread{
     private ObjectInputStream roomInputStream;
     private ObjectOutputStream roomOutputStream;
 
-
-
-    // maintains sockets connected to resource managers
-    // resource types(Flights, Cars, Rooms) -> Socket
-    private Map<String, Socket> rmSockets;
-
-    private final static String FLIGHTS = "Flights";
-    private final static String CARS = "Cars";
-    private final static String ROOMS = "Rooms";
-
-    private int rmPort;
-
     /**
      *
      * @param clientSocket
@@ -48,7 +36,6 @@ class MiddlewareTaskHandler extends Thread{
     public MiddlewareTaskHandler(Socket clientSocket, String flightHost, String carHost, String roomHost, int rmPort){
 
         this.clientSocket = clientSocket;
-        this.rmPort = rmPort;
 
         // to be safer, we initialize output streams before input streams.
         try{
