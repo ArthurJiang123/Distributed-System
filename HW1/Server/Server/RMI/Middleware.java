@@ -24,8 +24,6 @@ public class Middleware extends ResourceManager {
     private IResourceManager carManager;
     private IResourceManager roomManager;
 
-    private final Lock middlewireLock = new ReentrantLock();
-
 
     public Middleware(String p_name, IResourceManager flightManager, IResourceManager carManager, IResourceManager roomManager) {
         super(p_name);
@@ -138,84 +136,78 @@ public class Middleware extends ResourceManager {
     @Override
     public boolean bundle(int customerID, Vector<String> flightNumbers, String location, boolean reserveCar, boolean reserveRoom) throws RemoteException {
 
-        // first acquire locks when needing multiple managers
-        middlewireLock.lock();
-
         System.out.println("Starting bundle reservation for customer: " + customerID);
         System.out.println("Location: " + location + ", Reserve Car: " + reserveCar + ", Reserve Room: " + reserveRoom);
 
         Vector<Integer> reservedFlights = new Vector<>();
-        try{
-            // Try to reserve flights
-            for (String flightNumStr : flightNumbers) {
-                int flightNum = Integer.parseInt(flightNumStr);
-                boolean flightReserved = flightManager.reserveFlight(customerID, flightNum);
+        // Try to reserve flights
+        for (String flightNumStr : flightNumbers) {
+            int flightNum = Integer.parseInt(flightNumStr);
+            boolean flightReserved = flightManager.reserveFlight(customerID, flightNum);
 
-                if (flightReserved) {
-                    System.out.println("Flight " + flightNum + " reserved for customer " + customerID);
-                    reservedFlights.add(flightNum);
-                } else {
-                    System.out.println("Failed to reserve flight " + flightNum + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    if(!reservedFlights.isEmpty()){
-                        for(int reservedFlightNum : reservedFlights){
-                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, reservedFlightNum);
-                            System.out.println("Flight reservation canceled for number " + flightNum);
-                        }
+            if (flightReserved) {
+                System.out.println("Flight " + flightNum + " reserved for customer " + customerID);
+                reservedFlights.add(flightNum);
+            } else {
+                System.out.println("Failed to reserve flight " + flightNum + " for customer " + customerID);
+                System.out.println("Rollback:");
+                if(!reservedFlights.isEmpty()){
+                    for(int reservedFlightNum : reservedFlights){
+                        boolean flightCanceled = flightManager.cancelReserveFlight(customerID, reservedFlightNum);
+                        System.out.println("Flight reservation canceled for number " + flightNum);
                     }
-                    System.out.println("Rollback completes for customer:" + customerID );
-                    return false;
                 }
+                System.out.println("Rollback completes for customer:" + customerID );
+                return false;
             }
-
-            // reserve a car if the customer wants
-            if (reserveCar) {
-                boolean carReserved = carManager.reserveCar(customerID, location);
-                if (carReserved) {
-                    System.out.println("Car reserved at " + location + " for customer " + customerID);
-                } else {
-                    System.out.println("Failed to reserve car at " + location + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    if(!reservedFlights.isEmpty()){
-                        for(int flightNum : reservedFlights){
-                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
-                            System.out.println("Flight reservation canceled for number " + flightNum);
-                        }
-                    }
-                    System.out.println("Rollback completes for customer:" + customerID );
-
-                    return false;
-                }
-            }
-
-            // reserve a room if the customer wants
-            if (reserveRoom) {
-                boolean roomReserved = roomManager.reserveRoom(customerID, location);
-                if (roomReserved) {
-                    System.out.println("Room reserved at " + location + " for customer " + customerID);
-                } else {
-                    System.out.println("Failed to reserve room at " + location + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    // rollback previous registered flights
-                    if(!reservedFlights.isEmpty()){
-                        for(int flightNum : reservedFlights){
-                            boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
-                            System.out.println("Flight reservation canceled for number " + flightNum);
-                        }
-                    }
-                    // if also reserving a car, rollback previous registered car
-                    if(reserveCar){
-                        boolean carCanceled = carManager.cancelReserveCar(customerID, location);
-                        System.out.println("Car reservation canceled at location " + location);
-                    }
-                    System.out.println("Rollback completes for customer:" + customerID );
-
-                    return false;
-                }
-            }
-        }finally {
-            middlewireLock.unlock();
         }
+
+        // reserve a car if the customer wants
+        if (reserveCar) {
+            boolean carReserved = carManager.reserveCar(customerID, location);
+            if (carReserved) {
+                System.out.println("Car reserved at " + location + " for customer " + customerID);
+            } else {
+                System.out.println("Failed to reserve car at " + location + " for customer " + customerID);
+                System.out.println("Rollback:");
+                if(!reservedFlights.isEmpty()){
+                    for(int flightNum : reservedFlights){
+                        boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
+                        System.out.println("Flight reservation canceled for number " + flightNum);
+                    }
+                }
+                System.out.println("Rollback completes for customer:" + customerID );
+
+                return false;
+            }
+        }
+
+        // reserve a room if the customer wants
+        if (reserveRoom) {
+            boolean roomReserved = roomManager.reserveRoom(customerID, location);
+            if (roomReserved) {
+                System.out.println("Room reserved at " + location + " for customer " + customerID);
+            } else {
+                System.out.println("Failed to reserve room at " + location + " for customer " + customerID);
+                System.out.println("Rollback:");
+                // rollback previous registered flights
+                if(!reservedFlights.isEmpty()){
+                    for(int flightNum : reservedFlights){
+                        boolean flightCanceled = flightManager.cancelReserveFlight(customerID, flightNum);
+                        System.out.println("Flight reservation canceled for number " + flightNum);
+                    }
+                }
+                // if also reserving a car, rollback previous registered car
+                if(reserveCar){
+                    boolean carCanceled = carManager.cancelReserveCar(customerID, location);
+                    System.out.println("Car reservation canceled at location " + location);
+                }
+                System.out.println("Rollback completes for customer:" + customerID );
+
+                return false;
+            }
+        }
+
 
         return true;
     }
@@ -223,68 +215,54 @@ public class Middleware extends ResourceManager {
     @Override
     public boolean deleteCustomer(int customerID) throws RemoteException {
         // Delete customer from all managers
-        middlewireLock.lock();
 
         boolean flightDeleted, carDeleted, roomDeleted;
-        try{
 
-            flightDeleted = flightManager.deleteCustomer(customerID);
-            carDeleted = carManager.deleteCustomer(customerID);
-            roomDeleted = roomManager.deleteCustomer(customerID);
-
-        }finally {
-            middlewireLock.unlock();
-        }
+        flightDeleted = flightManager.deleteCustomer(customerID);
+        carDeleted = carManager.deleteCustomer(customerID);
+        roomDeleted = roomManager.deleteCustomer(customerID);
 
         return flightDeleted && carDeleted && roomDeleted;
     }
 
     @Override
     public int newCustomer() throws RemoteException{
-        middlewireLock.lock();
         int customerID = -1;
+
+        customerID = flightManager.newCustomer();
+
+        boolean carCreated = false;
+        boolean roomCreated = false;
+
         try{
-            customerID = flightManager.newCustomer();
-
-            boolean carCreated = false;
-            boolean roomCreated = false;
-
-            try{
-                carCreated = carManager.newCustomer(customerID);
-                roomCreated = roomManager.newCustomer(customerID);
-            }catch (RemoteException  e){
-                System.err.println("Error creating customer in one of the ResourceManagers: " + e.getMessage());
-                return -1;
-            }
-
-            if(!carCreated || !roomCreated){
-                rollbackAddingCustomer(customerID);
-                System.err.println("Failed to create customer in all ResourceManagers.");
-                return -1;
-            }
-
-        }finally {
-            middlewireLock.unlock();
+            carCreated = carManager.newCustomer(customerID);
+            roomCreated = roomManager.newCustomer(customerID);
+        }catch (RemoteException  e){
+            System.err.println("Error creating customer in one of the ResourceManagers: " + e.getMessage());
+            return -1;
         }
+
+        if(!carCreated || !roomCreated){
+            rollbackAddingCustomer(customerID);
+            System.err.println("Failed to create customer in all ResourceManagers.");
+            return -1;
+        }
+
         return customerID;
     }
 
     @Override
     public boolean newCustomer(int customerID) throws RemoteException{
-        middlewireLock.lock();
-        try{
-            boolean flightCreated = flightManager.newCustomer(customerID);
-            boolean carCreated = carManager.newCustomer(customerID);;
-            boolean roomCreated = roomManager.newCustomer(customerID);
+        boolean flightCreated = flightManager.newCustomer(customerID);
+        boolean carCreated = carManager.newCustomer(customerID);;
+        boolean roomCreated = roomManager.newCustomer(customerID);
 
-            if (!flightCreated || !carCreated || !roomCreated) {
-                rollbackAddingCustomer(customerID);
-                System.err.println("Failed to create customer across all ResourceManagers.");
-                return false;
-            }
-        }finally {
-            middlewireLock.unlock();
+        if (!flightCreated || !carCreated || !roomCreated) {
+            rollbackAddingCustomer(customerID);
+            System.err.println("Failed to create customer across all ResourceManagers.");
+            return false;
         }
+
         return true;
     }
 
@@ -314,15 +292,12 @@ public class Middleware extends ResourceManager {
     @Override
     public String queryCustomerInfo(int customerID) throws RemoteException{
 
-        middlewireLock.lock();
         String flightInfo, carInfo, roomInfo;
-        try{
-            flightInfo = "Flights " + flightManager.queryCustomerInfo(customerID);
-            carInfo = "Cars " + carManager.queryCustomerInfo(customerID);
-            roomInfo = "Rooms " + roomManager.queryCustomerInfo(customerID);
-        }finally {
-            middlewireLock.unlock();
-        }
+
+        flightInfo = "Flights " + flightManager.queryCustomerInfo(customerID);
+        carInfo = "Cars " + carManager.queryCustomerInfo(customerID);
+        roomInfo = "Rooms " + roomManager.queryCustomerInfo(customerID);
+
 
         return flightInfo + carInfo + roomInfo;
     }
