@@ -257,126 +257,118 @@ class MiddlewareTaskHandler extends Thread{
         boolean reserveCar = Boolean.parseBoolean(arguments.elementAt(i++));
         boolean reserveRoom = Boolean.parseBoolean(arguments.elementAt(i));
 
-        try{
+        Vector<String> reservedFlights = new Vector<>();
+        // reserve flights
+        for (String flightNum : flightNumbers) {
+            Vector<String> arg = new Vector<>();
 
-            Vector<String> reservedFlights = new Vector<>();
-            // reserve flights
-            for (String flightNum : flightNumbers) {
-                Vector<String> arg = new Vector<>();
+            arg.add(Command.ReserveFlight.name());
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(flightNum));
 
-                arg.add(Command.ReserveFlight.name());
-                arg.add(String.valueOf(customerID));
-                arg.add(String.valueOf(flightNum));
+            ResponsePacket flightResponse = forwardToFlight(new Request(Command.ReserveFlight, arg));
 
-                ResponsePacket flightResponse = forwardToFlight(new Request(Command.ReserveFlight, arg));
+            // rollback
+            // for each reserved flight, make request to cancel the reservation.
+            if (!flightResponse.getStatus()) {
 
-                // rollback
-                // for each reserved flight, make request to cancel the reservation.
-                if (!flightResponse.getStatus()) {
+                System.out.println("Failed to reserve flight " + flightNum + " for customer " + customerID);
+                System.out.println("Rollback:");
+                if(!reservedFlights.isEmpty()){
 
-                    System.out.println("Failed to reserve flight " + flightNum + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    if(!reservedFlights.isEmpty()){
+                    for(String reservedFlight : reservedFlights){
+                        Vector<String> reservedFlightsArgs = new Vector<>();
 
-                        for(String reservedFlight : reservedFlights){
-                            Vector<String> reservedFlightsArgs = new Vector<>();
+                        reservedFlightsArgs.add(Command.CancelReserveFlight.name());
+                        reservedFlightsArgs.add(String.valueOf(customerID));
+                        reservedFlightsArgs.add(reservedFlight);
 
-                            reservedFlightsArgs.add(Command.CancelReserveFlight.name());
-                            reservedFlightsArgs.add(String.valueOf(customerID));
-                            reservedFlightsArgs.add(reservedFlight);
+                         ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
 
-                            ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
-
-                            System.out.println("Flight reservation canceled for flight number " + reservedFlight);
-                        }
-
-                        System.out.println("Rollback completes for customer:" + customerID );
-                    }
-
-                    return new ResponsePacket(false, "bundle operation failed.");
-                }
-
-                reservedFlights.add(flightNum);
-            }
-            // reserve a car
-            if (reserveCar) {
-                Vector<String> arg = new Vector<>();
-                arg.add(Command.ReserveCar.name());
-                arg.add(String.valueOf(customerID));
-                arg.add(String.valueOf(location));
-                ResponsePacket carResponse = forwardToCar(new Request(Command.ReserveCar, arg));
-
-                if (!carResponse.getStatus()) {
-
-                    System.out.println("Failed to reserve car at " + location + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    if(!reservedFlights.isEmpty()){
-
-                        for(String reservedFlight : reservedFlights){
-                            Vector<String> reservedFlightsArgs = new Vector<>();
-
-                            reservedFlightsArgs.add(Command.CancelReserveFlight.name());
-                            reservedFlightsArgs.add(String.valueOf(customerID));
-                            reservedFlightsArgs.add(reservedFlight);
-
-                            ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
-
-                            System.out.println("Flight reservation canceled for flight number " + reservedFlight);
-                        }
-                        System.out.println("Rollback completes for customer:" + customerID );
-                    }
-                    return new ResponsePacket(false, "bundle operation failed.");
-                }
-            }
-
-            // Reserve a room
-            if (reserveRoom) {
-                Vector<String> arg = new Vector<>();
-                arg.add(Command.ReserveRoom.name());
-                arg.add(String.valueOf(customerID));
-                arg.add(String.valueOf(location));
-                ResponsePacket roomResponse = forwardToRoom(new Request(Command.ReserveRoom, arg));
-
-                if (!roomResponse.getStatus()) {
-                    System.out.println("Failed to reserve room at " + location + " for customer " + customerID);
-                    System.out.println("Rollback:");
-                    if(!reservedFlights.isEmpty()){
-
-                        for(String reservedFlight : reservedFlights){
-                            Vector<String> reservedFlightsArgs = new Vector<>();
-
-                            reservedFlightsArgs.add(Command.CancelReserveFlight.name());
-                            reservedFlightsArgs.add(String.valueOf(customerID));
-                            reservedFlightsArgs.add(reservedFlight);
-
-                            ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
-
-                            System.out.println("Flight reservation canceled for flight number " + reservedFlight);
-                        }
-                    }
-
-                    if(reserveCar){
-                        Vector<String> carArg = new Vector<>();
-                        carArg.add(Command.CancelReserveCar.name());
-                        carArg.add(String.valueOf(customerID));
-                        carArg.add(String.valueOf(location));
-                        ResponsePacket carResponse = forwardToCar(new Request(Command.CancelReserveCar, carArg));
-                        System.out.println("Car reservation canceled at location  " + location);
-                        return new ResponsePacket(false, "bundle operation failed.");
+                        System.out.println("Flight reservation canceled for flight number " + reservedFlight);
                     }
 
                     System.out.println("Rollback completes for customer:" + customerID );
-                    return new ResponsePacket(false, "bundle operation failed.");
                 }
+
+                return new ResponsePacket(false, "bundle operation failed.");
             }
 
-            return new ResponsePacket(true, "bundle operation succeeded.");
+            reservedFlights.add(flightNum);
+        }
+        // reserve a car
+        if (reserveCar) {
+            Vector<String> arg = new Vector<>();
+            arg.add(Command.ReserveCar.name());
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(location));
+            ResponsePacket carResponse = forwardToCar(new Request(Command.ReserveCar, arg));
 
-        }catch (Exception e){
-            System.out.println("fail to roll back bundle:" + e.getMessage());
+            if (!carResponse.getStatus()) {
+
+                System.out.println("Failed to reserve car at " + location + " for customer " + customerID);
+                System.out.println("Rollback:");
+                if(!reservedFlights.isEmpty()){
+
+                    for(String reservedFlight : reservedFlights){
+                        Vector<String> reservedFlightsArgs = new Vector<>();
+
+                        reservedFlightsArgs.add(Command.CancelReserveFlight.name());
+                        reservedFlightsArgs.add(String.valueOf(customerID));
+                        reservedFlightsArgs.add(reservedFlight);
+
+                        ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
+
+                        System.out.println("Flight reservation canceled for flight number " + reservedFlight);
+                    }
+                    System.out.println("Rollback completes for customer:" + customerID );
+                }
+                return new ResponsePacket(false, "bundle operation failed.");
+            }
         }
 
-        return new ResponsePacket(false, "bundle operation failed.");
+        // Reserve a room
+        if (reserveRoom) {
+            Vector<String> arg = new Vector<>();
+            arg.add(Command.ReserveRoom.name());
+            arg.add(String.valueOf(customerID));
+            arg.add(String.valueOf(location));
+            ResponsePacket roomResponse = forwardToRoom(new Request(Command.ReserveRoom, arg));
+
+            if (!roomResponse.getStatus()) {
+                System.out.println("Failed to reserve room at " + location + " for customer " + customerID);
+                System.out.println("Rollback:");
+                if(!reservedFlights.isEmpty()){
+
+                    for(String reservedFlight : reservedFlights){
+                        Vector<String> reservedFlightsArgs = new Vector<>();
+
+                        reservedFlightsArgs.add(Command.CancelReserveFlight.name());
+                        reservedFlightsArgs.add(String.valueOf(customerID));
+                        reservedFlightsArgs.add(reservedFlight);
+
+                        ResponsePacket rollback = forwardToFlight(new Request(Command.CancelReserveFlight, reservedFlightsArgs ));
+
+                        System.out.println("Flight reservation canceled for flight number " + reservedFlight);
+                    }
+                }
+
+                if(reserveCar){
+                    Vector<String> carArg = new Vector<>();
+                    carArg.add(Command.CancelReserveCar.name());
+                    carArg.add(String.valueOf(customerID));
+                    carArg.add(String.valueOf(location));
+                    ResponsePacket carResponse = forwardToCar(new Request(Command.CancelReserveCar, carArg));
+                    System.out.println("Car reservation canceled at location  " + location);
+                    return new ResponsePacket(false, "bundle operation failed.");
+                }
+
+                System.out.println("Rollback completes for customer:" + customerID );
+                return new ResponsePacket(false, "bundle operation failed.");
+            }
+        }
+
+        return new ResponsePacket(true, "bundle operation succeeded.");
     }
 
     /**
