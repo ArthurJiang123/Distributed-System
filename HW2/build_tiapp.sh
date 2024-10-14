@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 
 #TODO Edit this dir name to where your comp512.jar and build_tiapp.sh script are.
 BASEDIR=$HOME/comp512/p2

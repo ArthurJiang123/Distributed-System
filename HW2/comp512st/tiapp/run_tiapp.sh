@@ -4,7 +4,7 @@ if [[ $# -ne 1 ]]
 then
 	echo "Please pass the player number as the argument"
 	echo "  $0 <playernum>"
-	echo "  $0 3"
+	echo "  $0 2"
 	exit 2
 fi
 
@@ -15,7 +15,7 @@ playernum=$1
 BASEDIR=$HOME/comp512/p2
 
 #TODO update your group number here in place of XX
-group=xx
+group=31
 
 #TODO Optional
 # this will always generate the same game island. Change the last digits to any number if you want to change it to a different island map. Otherwise leave it as it is.
@@ -26,9 +26,9 @@ gameid=game-$group-99
 # player1 -> process 1, player 2 -> process 2, etc .. add more depending on how many players are playing.
 # Remember to start the scripts of corresponding players from the corresponding servers.
 # comment out process3 if you are only playing 2 players, etc.
-export process1=server1:401$group
-export process2=server2:402$group
-#export process3=server3:403$group
+export process1=tr-open-03.cs.mcgill.ca:401$group
+export process2=tr-open-04.cs.mcgill.ca:402$group
+#export process3=tr-open-05:403$group
 #export process4=server4:404$group
 #export process5=server5:405$group
 #export process6=server6:406$group
