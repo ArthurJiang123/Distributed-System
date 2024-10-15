@@ -39,6 +39,8 @@ public class Paxos
 
 	private final BlockingQueue<Object> proposalQueue = new LinkedBlockingQueue<>();
 
+	private BallotID maxBallotID;
+	private Object value;
 
 	public Paxos(String myProcess, String[] allGroupProcesses, Logger logger, FailCheck failCheck) throws IOException, UnknownHostException
 	{
@@ -51,6 +53,9 @@ public class Paxos
 		this.myProcess = myProcess;
 		this.allGroupProcesses = allGroupProcesses;
 		this.logger = logger;
+
+		// Acceptor field
+
 	}
 
 	// This is what the application layer is going to call to send a message/value, such as the player and the move
@@ -250,6 +255,64 @@ public class Paxos
 		failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
 
 		return gcmsg.val;
+	}
+
+	private void receivePropose(PaxosMessage msg) {
+		if (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0) {
+			// The incoming ballot ID is higher than the maxBallotID
+			// The value will be sent along, don't need to check it again
+			this.maxBallotID = msg.getBallotID();  // Update the highest seen BallotID
+			PaxosMessage promiseMessage = new PaxosMessage(
+					PaxosMessage.MessageType.PROMISE,
+					msg.getBallotID(),
+					this.value,
+					myProcess,
+					this.maxBallotID
+			);
+			gcl.sendMsg(promiseMessage, msg.getProposer());  // Send promise to proposer
+		} else {
+			// Incoming BallotID is smaller, reject it
+			PaxosMessage rejectMessage = new PaxosMessage(
+					PaxosMessage.MessageType.REJECT,
+					this.maxBallotID,  // Send the current highest ballotID to proposer
+					null,  // No value is accepted in this case
+					myProcess,
+					this.maxBallotID
+			);
+			gcl.sendMsg(rejectMessage, msg.getProposer());  // Send reject message to proposer
+		}
+	}
+
+	private void receiveAccept(PaxosMessage msg) {
+		if (msg.getBallotID().equals(this.maxBallotID)) {
+			this.value = msg.getValue();  // Accept the value
+			PaxosMessage acceptAckMessage = new PaxosMessage(
+					PaxosMessage.MessageType.ACCEPT_ACK,
+					msg.getBallotID(),
+					this.value,
+					myProcess,
+					this.maxBallotID
+			);
+			gcl.sendMsg(acceptAckMessage, msg.getProposer());
+		} else {
+			PaxosMessage rejectMessage = new PaxosMessage(
+					PaxosMessage.MessageType.REJECT,
+					this.maxBallotID,  // Send the current highest ballotID to proposer
+					null, // TODO: figure out whether we should include info when rejecting
+					myProcess,
+					this.maxBallotID
+			);
+			gcl.sendMsg(rejectMessage, msg.getProposer());  // Send reject message to proposer
+		}
+	}
+
+	private Object[] receiveConfirm(PaxosMessage msg) {
+		if (msg.getBallotID().equals(this.maxBallotID)) {
+			// This message contains the move to apply to the game map
+			Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
+			return moveInfo;
+		}
+		throw new RuntimeException("Confirm phase: local ballot id and msg ballot id are different.");
 	}
 
 
