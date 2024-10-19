@@ -9,7 +9,8 @@ class PaxosMessage implements Serializable {
         ACCEPT, // Proposer requesting acceptors (for a value)
         ACCEPT_ACK, // Acceptor's response -> accepted the value
         CONFIRM, // Proposer's final commit message to confirm the value
-        REJECT // Reject the proposal
+        REJECT_PROPOSE, // Reject the proposal
+        REJECT_ACCEPT
     }
 
     private final MessageType type;
