@@ -32,8 +32,6 @@ public class Paxos
 
 
 	private int proposalSlot = 0;  // Local sequence for proposals
-	private int currentSlot = 0;  // Track the current sequence number
-
 	private final Map<Integer, Object> acceptedValues = new HashMap<>();
 	private final BlockingQueue<PaxosMessage> messageQueue = new LinkedBlockingQueue<>();
 
@@ -68,6 +66,11 @@ public class Paxos
 		// TODO:Extend this to build whatever Paxos logic you need to make sure the messaging system is total order.
 		// TODO:Here you will have to ensure that the CALL BLOCKS, and is returned ONLY when a majority (and immediately upon majority) of processes have accepted the value.
 
+		if (val == null) {
+			logger.severe("Broadcast value is null");
+			return;
+		}
+
 		boolean accepted = false;
 
 		try{
@@ -81,10 +84,8 @@ public class Paxos
 
 				BallotID ballotID = new BallotID(proposalSlot, myProcess);
 
-//				int slot = currentSlot;  // Propose for the current slot
-
 				PaxosMessage proposal = new PaxosMessage(
-						PaxosMessage.MessageType.PROPOSE, ballotID, val
+						PaxosMessage.MessageType.PROPOSE, ballotID, myProcess, val
 				);
 
 				logger.info("Broadcasting proposal: " + proposal);
@@ -142,6 +143,7 @@ public class Paxos
 						return false;
 					}
 
+					logger.info("Received promise from: " + response.getProposer());
 					promises.add(response.getProposer());
 				}
 
@@ -177,14 +179,14 @@ public class Paxos
 	 */
 	private void sendAcceptRequest(BallotID ballotID, Object val){
 		PaxosMessage acceptRequest = new PaxosMessage(
-				PaxosMessage.MessageType.ACCEPT, ballotID, val
+				PaxosMessage.MessageType.ACCEPT, ballotID, myProcess, val
 		);
 
 		logger.info("Sending accept request: " + acceptRequest);
 
 		gcl.broadcastMsg(acceptRequest);
 
-		waitAcceptAcks(ballotID);
+		waitAcceptAcks(ballotID, val);
 	}
 
 	/**
@@ -196,7 +198,7 @@ public class Paxos
 	 * @param ballotID
 	 * @return
 	 */
-	private boolean waitAcceptAcks(BallotID ballotID){
+	private boolean waitAcceptAcks(BallotID ballotID, Object val){
 		Set<String> acceptAcks = new HashSet<>();
 		try{
 			while(acceptAcks.size() <= allGroupProcesses.length / 2){
@@ -216,7 +218,7 @@ public class Paxos
 
 					failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
 
-					sendConfirm(ballotID);
+					sendConfirm(ballotID, val);
 
 					return true;
 				}
@@ -235,9 +237,9 @@ public class Paxos
 	 * STEP 4: Send Confirm Message once the majority of acceptors accepted value (Proposer)
 	 * @param ballotID
 	 */
-	private void sendConfirm(BallotID ballotID) {
+	private void sendConfirm(BallotID ballotID, Object val) {
 		PaxosMessage confirmMessage = new PaxosMessage(
-				PaxosMessage.MessageType.CONFIRM, ballotID, null
+				PaxosMessage.MessageType.CONFIRM, ballotID, myProcess, val
 		);
 
 		logger.info("Sending confirm message: " + confirmMessage);
@@ -258,32 +260,39 @@ public class Paxos
 	 */
 	public Object acceptTOMsg() throws InterruptedException
 	{
-		GCMessage gcmsg = gcl.readGCMessage();
-		PaxosMessage paxosMessage = (PaxosMessage) gcmsg.val;
+		// re-initialize
+		this.value = null;
 
-		switch (paxosMessage.getType()) {
-			case PROPOSE:
-				receivePropose(paxosMessage);
-				break;
-			case ACCEPT:
-				receiveAccept(paxosMessage);
-				break;
-			case CONFIRM:
-				return receiveConfirm(paxosMessage);
-			case PROMISE:
-				break;
-			case ACCEPT_ACK:
-				logger.info("Received ACCEPT_ACK message: " + paxosMessage);
-				break;
-			case REJECT:
-				logger.info("Received REJECT message: " + paxosMessage);
-				break;
-			default:
-				logger.warning("Unknown message type received: " + paxosMessage);
-				break;
+		Object confirmedMove = null;
+		while (confirmedMove == null) {
+			GCMessage gcmsg = gcl.readGCMessage();
+			PaxosMessage paxosMessage = (PaxosMessage) gcmsg.val;
+
+			failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
+
+			switch (paxosMessage.getType()) {
+				case PROPOSE:
+					receivePropose(paxosMessage);
+					break;
+				case ACCEPT:
+					receiveAccept(paxosMessage);
+					break;
+				case CONFIRM:
+					confirmedMove = receiveConfirm(paxosMessage);
+				case PROMISE:
+					break;
+				case ACCEPT_ACK:
+					logger.info("Received ACCEPT_ACK message: " + paxosMessage);
+					break;
+				case REJECT:
+					logger.info("Received REJECT message: " + paxosMessage);
+					break;
+				default:
+					logger.warning("Unknown message type received: " + paxosMessage);
+					break;
+			}
 		}
-
-		return null;
+		return confirmedMove;
 	}
 
 	/**
@@ -297,8 +306,6 @@ public class Paxos
 	 * @param msg The PaxosMessage containing the proposal from a proposer.
 	 */
 	private synchronized void receivePropose(PaxosMessage msg) {
-		// be invoked immediately when a process receives a propose message.
-		failCheck.checkFailure(FailCheck.FailureType.RECEIVEPROPOSE);
 		if (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0) {
 			// The incoming ballot ID is higher than the maxBallotID
 			// The value will be sent along, don't need to check it again
@@ -306,8 +313,8 @@ public class Paxos
 			PaxosMessage promiseMessage = new PaxosMessage(
 					PaxosMessage.MessageType.PROMISE,
 					msg.getBallotID(),
-					this.value,
-					myProcess,
+					msg.getProposer(),
+					null,
 					this.maxBallotID
 			);
 			gcl.sendMsg(promiseMessage, msg.getProposer());  // Send promise to proposer
@@ -316,14 +323,13 @@ public class Paxos
 			PaxosMessage rejectMessage = new PaxosMessage(
 					PaxosMessage.MessageType.REJECT,
 					this.maxBallotID,  // Send the current highest ballotID to proposer
-					null,
-					myProcess,
+					msg.getProposer(),
+					msg.getValue(),
 					this.maxBallotID
 			);
+
 			gcl.sendMsg(rejectMessage, msg.getProposer());
 		}
-		//invoked immediately AFTER a process sends out its vote (promise or refuse) for leader election
-		failCheck.checkFailure(FailCheck.FailureType.AFTERSENDVOTE);
 	}
 
 	/**
@@ -342,8 +348,8 @@ public class Paxos
 			PaxosMessage acceptAckMessage = new PaxosMessage(
 					PaxosMessage.MessageType.ACCEPT_ACK,
 					msg.getBallotID(),
+					msg.getProposer(),
 					this.value,
-					myProcess,
 					this.maxBallotID
 			);
 			gcl.sendMsg(acceptAckMessage, msg.getProposer());
@@ -351,8 +357,8 @@ public class Paxos
 			PaxosMessage rejectMessage = new PaxosMessage(
 					PaxosMessage.MessageType.REJECT,
 					this.maxBallotID,  // Send the current highest ballotID to proposer
+					msg.getProposer(),
 					null, // TODO: figure out whether we should include info when rejecting
-					myProcess,
 					this.maxBallotID
 			);
 			gcl.sendMsg(rejectMessage, msg.getProposer());  // Send reject message to proposer
@@ -372,6 +378,13 @@ public class Paxos
 		if (msg.getBallotID().equals(this.maxBallotID)) {
 			// This message contains the move to apply to the game map
 			Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
+
+			if (moveInfo == null) {
+				logger.severe("Received CONFIRM message with null value");
+			} else {
+				logger.info("Confirmed move: " + moveInfo[0] + " moves " + moveInfo[1]);
+			}
+
 			return moveInfo;
 		}
 		throw new RuntimeException("Confirm phase: local ballot id and msg ballot id are different.");

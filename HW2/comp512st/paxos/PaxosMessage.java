@@ -31,12 +31,10 @@ class PaxosMessage implements Serializable {
 //        this.proposer = proposer;
 //        this.acceptedBallotID = acceptedBallotID;
 //    }
-
-    public PaxosMessage(MessageType type, BallotID ballotID, Object value) {
-        this(type, ballotID, value, null, null);
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value) {
+        this(type, ballotID, proposer, value, null);
     }
-
-    public PaxosMessage(MessageType type, BallotID ballotID, Object value, String proposer, BallotID acceptedBallotID) {
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID) {
         this.type = type;
         this.ballotID = ballotID;
         this.value = value;

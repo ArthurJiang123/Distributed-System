@@ -29,6 +29,11 @@ public class TreasureIslandAppAuto implements Runnable
 
 	Paxos paxos;
 
+	// Track performance metrics
+	private long totalTimeForMoves = 0; // Total time spent processing moves
+	private int totalMovesAccepted = 0; // Total number of accepted moves
+	private long startTimeForMove; // Start time for the current move
+
 	public TreasureIslandAppAuto(Paxos paxos, Logger logger, String gameId, int numPlayers, int yourPlayer)
 	{
 		this.paxos = paxos;
@@ -61,6 +66,15 @@ public class TreasureIslandAppAuto implements Runnable
 			{
 				Object[] info  = (Object[]) paxos.acceptTOMsg();
 				logger.fine("Received :" + Arrays.toString(info));
+
+				long endTimeForMove = System.currentTimeMillis();
+				totalTimeForMoves += (endTimeForMove - startTimeForMove);
+				totalMovesAccepted++;
+
+				// Log the time taken for this move to be accepted
+				logger.info("Move accepted in " + (endTimeForMove - startTimeForMove) + " ms. Player: " + info[0]);
+
+
 				move((Integer)info[0], (Character)info[1], updateDisplay);
 				//displayIsland(); //we do not want to keep constantly refreshing the output display.
 			}
@@ -242,7 +256,10 @@ public class TreasureIslandAppAuto implements Runnable
 				case "D": // Capture the move and broadcast it to everyone along with the player number.
 					// Remember, this should block till this move has been accepted by the majority.
 					//	The logic for that should be built into the paxos module.
+
+					ta.startTimeForMove = System.currentTimeMillis();
 					paxos.broadcastTOMsg(new Object[]{ playerNum, cmd.charAt(0) });
+
 					break;
 				case "FI": // The process is to fail immediately.
 					failCheck.setFailurePoint(FailCheck.FailureType.IMMEDIATE);
@@ -270,6 +287,12 @@ public class TreasureIslandAppAuto implements Runnable
 		logger.info("Done with all my moves ..."); // we just chill for a bit to ensure we got all the messages from others before we shutdown.
 																							// May have to increase this for higher maxmoves and smaller intervals.
 		try{ Thread.sleep(5000); } catch (InterruptedException ie) { logger.log(Level.SEVERE, "I got InterruptedException when I was chilling after all my moves.", ie); }
+
+		// Log the final acceptance rate for this player
+		logger.info("Total moves accepted: " + ta.totalMovesAccepted);
+		logger.info("Total time for moves: " + ta.totalTimeForMoves + " ms");
+		logger.info("Acceptance rate: " + (double) ta.totalMovesAccepted / (ta.totalTimeForMoves / 1000.0) + " moves per second");
+
 		ta.keepExploring = false;
 		ta.tiThread.join(1000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
 		logger.info("Shutting down Paxos");

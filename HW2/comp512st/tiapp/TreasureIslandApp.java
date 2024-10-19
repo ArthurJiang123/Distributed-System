@@ -92,6 +92,9 @@ public class TreasureIslandApp implements Runnable
 		logger.addHandler(consoleHandler);
 		logger.setUseParentHandlers(false);
 		*/
+		ConsoleHandler consoleHandler = new ConsoleHandler();
+		consoleHandler.setLevel(Level.FINE); // Set to log all fine-level messages to the console
+		logger.addHandler(consoleHandler);
 
 		// Send logging to a file.
     try

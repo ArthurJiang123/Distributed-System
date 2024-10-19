@@ -4,7 +4,7 @@
 BASEDIR=$HOME/comp512/p2
 
 #TODO update your group number here in place of XX
-group=xx
+group=31
 
 #TODO Optional
 # this will always generate the same game island. Change the last digits to any number if you want to change it to a different island map. Otherwise leave it as it is.
@@ -26,7 +26,7 @@ export process3=${autotesthost}:403$group
 #export process9=${autotesthost}:409$group
 
 #TODO update these values as needed
-maxmoves=100 interval=100 randseed=xxxxxxxxx
+maxmoves=100 interval=100 randseed=100
 #TODO IF (and only if) you want to simulate failures, enable this for corresponding player numbers.
 #export failmode_N=RECEIVEPROPOSE
 #export failmode_N=AFTERSENDVOTE
