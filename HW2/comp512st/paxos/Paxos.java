@@ -261,8 +261,6 @@ public class Paxos
 		GCMessage gcmsg = gcl.readGCMessage();
 		PaxosMessage paxosMessage = (PaxosMessage) gcmsg.val;
 
-		failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
-
 		switch (paxosMessage.getType()) {
 			case PROPOSE:
 				receivePropose(paxosMessage);
@@ -299,6 +297,8 @@ public class Paxos
 	 * @param msg The PaxosMessage containing the proposal from a proposer.
 	 */
 	private synchronized void receivePropose(PaxosMessage msg) {
+		// be invoked immediately when a process receives a propose message.
+		failCheck.checkFailure(FailCheck.FailureType.RECEIVEPROPOSE);
 		if (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0) {
 			// The incoming ballot ID is higher than the maxBallotID
 			// The value will be sent along, don't need to check it again
@@ -322,6 +322,8 @@ public class Paxos
 			);
 			gcl.sendMsg(rejectMessage, msg.getProposer());
 		}
+		//invoked immediately AFTER a process sends out its vote (promise or refuse) for leader election
+		failCheck.checkFailure(FailCheck.FailureType.AFTERSENDVOTE);
 	}
 
 	/**
