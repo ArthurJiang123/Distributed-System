@@ -29,6 +29,7 @@ public class Paxos
 	String myProcess;
 	String[] allGroupProcesses;
 	Logger logger;
+	private volatile boolean isShuttingDown = false;
 
 
 	private int proposalSlot = 0;  // Local sequence for proposals
@@ -60,7 +61,7 @@ public class Paxos
 	}
 
 	private void messageDispatcher() {
-		while (true) {
+		while (!isShuttingDown) {
 			try {
 				PaxosMessage message = (PaxosMessage) gcl.readGCMessage().val;
 
@@ -88,8 +89,13 @@ public class Paxos
 						break;
 				}
 			} catch (InterruptedException e) {
-				logger.severe("Message dispatcher interrupted: " + e.getMessage());
-				Thread.currentThread().interrupt();  // Restore interrupted status
+				if (isShuttingDown) {
+					logger.info("Message dispatcher shutting down.");
+					break; // Exit loop if shutdown is in progress.
+				} else {
+					logger.severe("Message dispatcher interrupted: " + e.getMessage());
+					Thread.currentThread().interrupt(); // Restore interrupted status
+				}
 			}
 		}
 	}
@@ -109,12 +115,14 @@ public class Paxos
 			return;
 		}
 
+
 		boolean accepted = false;
+		int retryInterval = 100;
 
 		try{
 			proposalQueue.put(val);
 
-			while(!proposalQueue.isEmpty()){
+			while(!proposalQueue.isEmpty() && !isShuttingDown){
 
 				Object proposalValue = proposalQueue.peek();
 
@@ -130,6 +138,12 @@ public class Paxos
 				// Simulate failure before broadcasting
 				failCheck.checkFailure(FailCheck.FailureType.AFTERSENDPROPOSE);
 
+
+				if (isShuttingDown) {
+					logger.warning("Proposer can't broadcast message, system is shutting down.");
+					return;
+				}
+
 				gcl.broadcastMsg(proposal);
 
 				accepted = waitMajorPromises(ballotID, val);
@@ -140,6 +154,9 @@ public class Paxos
 					proposalQueue.poll();
 				} else {
 					logger.warning("Retrying proposal: " + proposalValue);
+					clearOldMessages(ballotID);
+//					Thread.sleep((long) (retryInterval * Math.random()));
+
 				}
 			}
 		}catch(InterruptedException e) {
@@ -148,6 +165,10 @@ public class Paxos
 		}
 	}
 
+	private void clearOldMessages(BallotID ballotID){
+		proposeResponseQueue.removeIf(message -> message.getBallotID().compareTo(ballotID) == 0);
+		acceptResponseQueue.removeIf(message -> message.getBallotID().compareTo(ballotID) == 0);
+	}
 	/**
 	 * STEP 2: Wait for Promises
 	 * should receive either:
@@ -174,6 +195,12 @@ public class Paxos
 
 //				PaxosMessage response = (PaxosMessage) gcl.readGCMessage().val;
 
+				// Ignore messages that belong to an older ballot
+				if (response.getBallotID().compareTo(ballotID) < 0) {
+					logger.info("Ignoring stale message with lower ballotID: " + response.getBallotID());
+					continue;
+				}
+
 				logger.info("Received promise-phase response: " + response);
 
 				if(response.getType() == PaxosMessage.MessageType.REJECT_PROPOSE){
@@ -197,7 +224,7 @@ public class Paxos
 
 					return sendAcceptRequest(ballotID, value);
 
-				}else if(rejections.size() >= allGroupProcesses.length/2){
+				}else if(rejections.size() > allGroupProcesses.length/2){
 					logger.info("At least half of the proposals were rejected for ballot ID:" + ballotID);
 					return false;
 				}
@@ -225,6 +252,11 @@ public class Paxos
 		);
 
 		logger.info("Sending accept request: " + acceptRequest);
+
+		if (isShuttingDown) {
+			logger.warning("Proposer can't broadcast message, system is shutting down.");
+			return false;
+		}
 
 		gcl.broadcastMsg(acceptRequest);
 
@@ -270,7 +302,7 @@ public class Paxos
 					sendConfirm(ballotID, val);
 
 					return true;
-				} else if (rejections.size() >= allGroupProcesses.length/2){
+				} else if (rejections.size() > allGroupProcesses.length/2){
 					logger.info("At least half of accept requests werer rejected for ballotID:" + ballotID);
 					return false;
 				}
@@ -293,6 +325,11 @@ public class Paxos
 		PaxosMessage confirmMessage = new PaxosMessage(
 				PaxosMessage.MessageType.CONFIRM, ballotID, myProcess, val
 		);
+
+		if (isShuttingDown) {
+			logger.warning("Proposer can't broadcast confirm message, system is shutting down.");
+			return;
+		}
 
 		logger.info("Sending confirm message: " + confirmMessage);
 		gcl.broadcastMsg(confirmMessage);
@@ -338,34 +375,6 @@ public class Paxos
 			// Failure simulation after receiving value for testing
 			failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
 
-
-//			GCMessage gcmsg = gcl.readGCMessage();
-//			PaxosMessage paxosMessage = (PaxosMessage) gcmsg.val;
-//
-//			failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
-//
-//			switch (paxosMessage.getType()) {
-//				case PROPOSE:
-//					receivePropose(paxosMessage);
-//					break;
-//				case ACCEPT:
-//					receiveAccept(paxosMessage);
-//					break;
-//				case CONFIRM:
-//					confirmedMove = receiveConfirm(paxosMessage);
-//				case PROMISE:
-//					break;
-//				case ACCEPT_ACK:
-//					logger.info("Received ACCEPT_ACK message: " + paxosMessage);
-//					break;
-//				case REJECT_PROPOSE:
-//				case REJECT_ACCEPT:
-//					logger.info("Received REJECT message: " + paxosMessage);
-//					break;
-//				default:
-//					logger.warning("Unknown message type received: " + paxosMessage);
-//					break;
-//			}
 		}
 		return confirmedMove;
 	}
@@ -381,6 +390,12 @@ public class Paxos
 	 * @param msg The PaxosMessage containing the proposal from a proposer.
 	 */
 	private synchronized void receivePropose(PaxosMessage msg) {
+
+		if (isShuttingDown) {
+			logger.warning("Acceptor can't send message, system is shutting down.");
+			return;
+		}
+
 		if (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0) {
 			// The incoming ballot ID is higher than the maxBallotID
 			// The value will be sent along, don't need to check it again
@@ -450,25 +465,43 @@ public class Paxos
 	 * @throws RuntimeException if the ballot ID in the CONFIRM message does not match the local maxBallotID.
 	 */
 	private Object[] receiveConfirm(PaxosMessage msg) {
-		if (msg.getBallotID().equals(this.maxBallotID)) {
-			// This message contains the move to apply to the game map
-			Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
+//		if (msg.getBallotID().equals(this.maxBallotID)) {
+//			// This message contains the move to apply to the game map
+//			Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
+//
+//			if (moveInfo == null) {
+//				logger.severe("Received CONFIRM message with null value");
+//			} else {
+//				logger.info("Confirmed move: " + moveInfo[0] + " moves " + moveInfo[1]);
+//			}
+//
+//			return moveInfo;
+//		}
+//		throw new RuntimeException("Confirm phase: local ballot id and msg ballot id are different.");
+		Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
 
-			if (moveInfo == null) {
-				logger.severe("Received CONFIRM message with null value");
-			} else {
-				logger.info("Confirmed move: " + moveInfo[0] + " moves " + moveInfo[1]);
-			}
-
-			return moveInfo;
+		if (moveInfo == null) {
+			logger.severe("Received CONFIRM message with null value");
+		} else {
+			logger.info("Confirmed move: " + moveInfo[0] + " moves " + moveInfo[1]);
 		}
-		throw new RuntimeException("Confirm phase: local ballot id and msg ballot id are different.");
+
+		return moveInfo;
 	}
 
 	//TODO:
 	// Add any of your own shutdown code into this method.
 	public void shutdownPaxos()
 	{
+		isShuttingDown = true;
+
+		// give time to dispatcher to stop
+		try{
+			Thread.sleep(500);
+		} catch (InterruptedException e){
+			Thread.currentThread().interrupt();
+		}
+
 		gcl.shutdownGCL();
 	}
 }

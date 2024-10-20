@@ -28,7 +28,7 @@ gameid=game-$group-99
 # comment out process3 if you are only playing 2 players, etc.
 export process1=tr-open-03.cs.mcgill.ca:401$group
 export process2=tr-open-04.cs.mcgill.ca:402$group
-#export process3=tr-open-05:403$group
+export process3=tr-open-05.cs.mcgill.ca:403$group
 #export process4=server4:404$group
 #export process5=server5:405$group
 #export process6=server6:406$group
