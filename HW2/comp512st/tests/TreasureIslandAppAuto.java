@@ -294,7 +294,7 @@ public class TreasureIslandAppAuto implements Runnable
 		logger.info("Acceptance rate: " + (double) ta.totalMovesAccepted / (ta.totalTimeForMoves / 1000.0) + " moves per second");
 
 		ta.keepExploring = false;
-		ta.tiThread.join(50000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
+		ta.tiThread.join(5000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.
 		logger.info("Shutting down Paxos");
 		paxos.shutdownPaxos(); // shutdown paxos.
 		ta.tiThread.interrupt(); // interrupt the app thread if it has not terminated.

@@ -7,14 +7,9 @@ import comp512.utils.*;
 
 // Any other imports that you may need.
 import java.io.*;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.logging.*;
 import java.net.UnknownHostException;
 
@@ -33,9 +28,8 @@ public class Paxos
 	Logger logger;
 	private volatile boolean isShuttingDown = false;
 
-
 	private int proposalSlot = 0;  // Local sequence for proposals
-	private final Map<Integer, Object> acceptedValues = new HashMap<>();
+	private int round = 0;
 	private final BlockingQueue<PaxosMessage> proposeQueue = new LinkedBlockingQueue<>();
 	private final BlockingQueue<PaxosMessage> proposeResponseQueue = new LinkedBlockingQueue<>();
 	private final BlockingQueue<PaxosMessage> acceptRequestQueue = new LinkedBlockingQueue<>();
@@ -45,8 +39,8 @@ public class Paxos
 
 	private BallotID maxBallotID;
 	private Object value;
-	private final ExecutorService executor;
-
+	private final ExecutorService proposerExecutor;
+	private final ExecutorService acceptorExecutor;
 	public Paxos(String myProcess, String[] allGroupProcesses, Logger logger, FailCheck failCheck) throws IOException, UnknownHostException
 	{
 		// Rember to call the failCheck.checkFailure(..) with appropriate arguments throughout your Paxos code to force fail points if necessary.
@@ -59,8 +53,8 @@ public class Paxos
 		this.allGroupProcesses = allGroupProcesses;
 		this.logger = logger;
 
-		this.executor = Executors.newFixedThreadPool(allGroupProcesses.length);
-
+		proposerExecutor = Executors.newFixedThreadPool(allGroupProcesses.length + 1);
+		acceptorExecutor = Executors.newFixedThreadPool(allGroupProcesses.length + 1);
 		new Thread(this::messageDispatcher).start();
 
 	}
@@ -70,65 +64,62 @@ public class Paxos
 			try {
 				PaxosMessage message = (PaxosMessage) gcl.readGCMessage().val;
 
-				executor.submit(() -> {
-					switch (message.getType()) {
-						case PROPOSE:
-							try {
-								proposeQueue.put(message);
-							} catch (InterruptedException e) {
-								logger.severe("Message dispatcher interrupted: " + e.getMessage());
-								Thread.currentThread().interrupt();
-							}
-							break;
-						case PROMISE:
-						case REJECT_PROPOSE:
-							try {
-								proposeResponseQueue.put(message);
-							} catch (InterruptedException e) {
-								logger.severe("Message dispatcher interrupted: " + e.getMessage());
-								Thread.currentThread().interrupt(); // Restore interrupted status
-							}
-							break;
-						case ACCEPT:
-							try {
-								acceptRequestQueue.put(message);
-							} catch (InterruptedException e) {
-								logger.severe("Message dispatcher interrupted: " + e.getMessage());
-								Thread.currentThread().interrupt();
-							}
-							break;
-						case ACCEPT_ACK:
-						case REJECT_ACCEPT:
-							try {
-								acceptResponseQueue.put(message);
-							} catch (InterruptedException e) {
-								logger.severe("Message dispatcher interrupted: " + e.getMessage());
-								Thread.currentThread().interrupt();
-							}
-							break;
-						case CONFIRM:
-							try {
-								confirmQueue.put(message);
-							} catch (InterruptedException e) {
-								logger.severe("Message dispatcher interrupted: " + e.getMessage());
-								Thread.currentThread().interrupt();
-							}
-							break;
-						default:
-							logger.warning("Unhandled message type: " + message.getType());
-							break;
-					}
-				});
-
+				// If the msg is about acceptors（PROPOSE, ACCEPT
+				if (message.getType() == PaxosMessage.MessageType.PROPOSE || message.getType() == PaxosMessage.MessageType.ACCEPT) {
+					acceptorExecutor.submit(() -> handleAcceptorMessages(message));
+				} else {
+				// If the msg is about proposers（PROMISE, REJECT_PROPOSE, ACCEPT_ACK, REJECT_ACCEPT, CONFIRM
+					proposerExecutor.submit(() -> handleProposerMessages(message));
+				}
 			} catch (InterruptedException e) {
 				if (isShuttingDown) {
 					logger.info("Message dispatcher shutting down.");
-					break; // Exit loop if shutdown is in progress.
+					break;
 				} else {
 					logger.severe("Message dispatcher interrupted: " + e.getMessage());
 					Thread.currentThread().interrupt(); // Restore interrupted status
 				}
 			}
+		}
+	}
+
+	private void handleProposerMessages(PaxosMessage message) {
+		try {
+			switch (message.getType()) {
+				case PROMISE:
+				case REJECT_PROPOSE:
+					proposeResponseQueue.put(message);
+					break;
+				case ACCEPT_ACK:
+				case REJECT_ACCEPT:
+					acceptResponseQueue.put(message);
+					break;
+				case CONFIRM:
+					confirmQueue.put(message);
+					break;
+				default:
+					logger.warning("Unhandled proposer message type: " + message.getType());
+			}
+		} catch (InterruptedException e) {
+			logger.severe("Failed to handle proposer message: " + e.getMessage());
+			Thread.currentThread().interrupt();
+		}
+	}
+
+	private void handleAcceptorMessages(PaxosMessage message) {
+		try {
+			switch (message.getType()) {
+				case PROPOSE:
+					receivePropose(message);  // 处理Propose请求
+					break;
+				case ACCEPT:
+					receiveAccept(message);   // 处理Accept请求
+					break;
+				default:
+					logger.warning("Unhandled acceptor message type: " + message.getType());
+			}
+		} catch (Exception e) {
+			logger.severe("Failed to handle acceptor message: " + e.getMessage());
 		}
 	}
 
@@ -142,34 +133,29 @@ public class Paxos
 		// TODO:Extend this to build whatever Paxos logic you need to make sure the messaging system is total order.
 		// TODO:Here you will have to ensure that the CALL BLOCKS, and is returned ONLY when a majority (and immediately upon majority) of processes have accepted the value.
 
-		if (val == null) {
-			logger.severe("Broadcast value is null");
-			return;
-		}
-
-
 		boolean accepted = false;
 		int retryInterval = 100;
 
-		try{
+		try {
 			proposalQueue.put(val);
 
-			while(!proposalQueue.isEmpty() && !isShuttingDown){
+			while (!proposalQueue.isEmpty() && !isShuttingDown) {
 
 				Object proposalValue = proposalQueue.peek();
 
-				proposalSlot++;
+//				proposalSlot++;
+//				round++;
+				round++;
 
 				BallotID ballotID = new BallotID(proposalSlot, myProcess);
 				PaxosMessage proposal = new PaxosMessage(
-						PaxosMessage.MessageType.PROPOSE, ballotID, myProcess, val
+						PaxosMessage.MessageType.PROPOSE, ballotID, myProcess, val, round
 				);
 
-				logger.info("Broadcasting proposal: " + proposal);
+				logger.info("Broadcasting proposal in round: " + round + " - " + proposal);
 
 				// Simulate failure before broadcasting
 				failCheck.checkFailure(FailCheck.FailureType.AFTERSENDPROPOSE);
-
 
 				if (isShuttingDown) {
 					logger.warning("Proposer can't broadcast message, system is shutting down.");
@@ -178,20 +164,24 @@ public class Paxos
 
 				gcl.broadcastMsg(proposal);
 
-				accepted = waitMajorPromises(ballotID, val);
+				accepted = waitMajorPromises(ballotID, val, round);
 
 				// if installed successfully, remove the proposal
 				// else, try again
 				if (accepted) {
 					proposalQueue.poll();
+//					round++;
+					proposalSlot++;
 				} else {
 					logger.warning("Retrying proposal: " + proposalValue);
-					clearOldMessages(ballotID);
-//					Thread.sleep((long) (retryInterval * Math.random()));
 
+					proposalSlot = maxBallotID == null ? proposalSlot++ : maxBallotID.getValue() + 1;
+
+					clearOldMessages(ballotID);
+					Thread.sleep((long) (retryInterval * Math.random()));
 				}
 			}
-		}catch(InterruptedException e) {
+		} catch (InterruptedException e) {
 			logger.severe("Failed to queue proposal: " + e.getMessage());
 			Thread.currentThread().interrupt();
 		}
@@ -216,14 +206,28 @@ public class Paxos
 	 * @param value
 	 * @return
 	 */
-	private boolean waitMajorPromises(BallotID ballotID, Object value){
+	private boolean waitMajorPromises(BallotID ballotID, Object value, int round){
 		Set<PaxosMessage> promises = new HashSet<>();
 		Set<PaxosMessage> rejections = new HashSet<>();
+
+		long startTime = System.currentTimeMillis();
+		long timeout = 3000;
 
 		try{
 			while(promises.size() <= allGroupProcesses.length/2 ){
 
-				PaxosMessage response = proposeResponseQueue.take(); // Block until promise is available
+				if (System.currentTimeMillis() - startTime > timeout) {
+					logger.warning("Timed out waiting for majority promises for ballotID: " + ballotID);
+					return false;
+				}
+
+//				PaxosMessage response = proposeResponseQueue.take(); // Block until promise is available
+				PaxosMessage response = proposeResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
+
+				if (response == null) {
+					logger.warning("Timed out while waiting for promises for ballotID: " + ballotID);
+					return false;  // Timeout handling
+				}
 
 				// Ignore messages that belong to an older ballot
 				if (response.getBallotID().compareTo(ballotID) < 0) {
@@ -252,7 +256,7 @@ public class Paxos
 					logger.info("Majority promises received for ballotID: " + ballotID);
 					failCheck.checkFailure(FailCheck.FailureType.AFTERBECOMINGLEADER);
 
-					return sendAcceptRequest(ballotID, value);
+					return sendAcceptRequest(ballotID, value, round);
 
 				}else if(rejections.size() > allGroupProcesses.length/2){
 					logger.info("At least half of the proposals were rejected for ballot ID:" + ballotID);
@@ -264,21 +268,13 @@ public class Paxos
 			logger.severe("Interrupted while waiting for majority acceptance.");
 			Thread.currentThread().interrupt();  // Restore interrupt status
 		}
-
 		logger.warning("Failed to achieve majority for ballotID: " + ballotID + ". Retrying...");
 		return false;
 	}
 
-	/**
-	 * STEP 2.1: Send Accept Request (Now Proposer -> Leader)
-	 * broadcast all messages to acceptors
-	 * It will ask acceptors if they accept the proposed value
-	 * @param ballotID
-	 * @param val
-	 */
-	private boolean sendAcceptRequest(BallotID ballotID, Object val){
+	private boolean sendAcceptRequest(BallotID ballotID, Object val, int round){
 		PaxosMessage acceptRequest = new PaxosMessage(
-				PaxosMessage.MessageType.ACCEPT, ballotID, myProcess, val
+				PaxosMessage.MessageType.ACCEPT, ballotID, myProcess, val, round
 		);
 
 		logger.info("Sending accept request: " + acceptRequest);
@@ -290,7 +286,7 @@ public class Paxos
 
 		gcl.broadcastMsg(acceptRequest);
 
-		return waitAcceptAcks(ballotID, val);
+		return waitAcceptAcks(ballotID, val, round);
 	}
 
 	/**
@@ -302,14 +298,22 @@ public class Paxos
 	 * @param ballotID
 	 * @return
 	 */
-	private boolean waitAcceptAcks(BallotID ballotID, Object val){
+	private boolean waitAcceptAcks(BallotID ballotID, Object val, int round){
 		Set<PaxosMessage> acceptAcks = new HashSet<>();
 		Set<PaxosMessage> rejections = new HashSet<>();
+
+		long startTime = System.currentTimeMillis();
+		long timeout = 3000;
 
 		try{
 			while(acceptAcks.size() <= allGroupProcesses.length / 2){
 
 				PaxosMessage response = acceptResponseQueue.take();
+
+//				if (System.currentTimeMillis() - startTime > timeout) {
+//					logger.warning("Timed out waiting for majority promises for ballotID: " + ballotID);
+//					return false;
+//				}
 
 				if (response.getBallotID().compareTo(ballotID) < 0) {
 					logger.info("Ignoring stale message with lower ballotID: " + response.getBallotID());
@@ -330,7 +334,7 @@ public class Paxos
 
 					failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
 
-					sendConfirm(ballotID, val);
+					sendConfirm(ballotID, val, round);
 
 					return true;
 				} else if (rejections.size() > allGroupProcesses.length/2){
@@ -347,13 +351,9 @@ public class Paxos
 		return false;
 	}
 
-	/**
-	 * STEP 4: Send Confirm Message once the majority of acceptors accepted value (Proposer)
-	 * @param ballotID
-	 */
-	private void sendConfirm(BallotID ballotID, Object val) {
+	private void sendConfirm(BallotID ballotID, Object val, int round) {
 		PaxosMessage confirmMessage = new PaxosMessage(
-				PaxosMessage.MessageType.CONFIRM, ballotID, myProcess, val
+				PaxosMessage.MessageType.CONFIRM, ballotID, myProcess, val, round
 		);
 
 		if (isShuttingDown) {
@@ -419,20 +419,20 @@ public class Paxos
 	 *
 	 * @param msg The PaxosMessage containing the proposal from a proposer.
 	 */
-	private void receivePropose(PaxosMessage msg) {
+	private synchronized void receivePropose(PaxosMessage msg) {
 
 		if (isShuttingDown) {
 			logger.warning("Acceptor can't send message, system is shutting down.");
 			return;
 		}
+
 		boolean accept = true;
 
-		synchronized (this) {
-			if (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0) {
-				this.maxBallotID = msg.getBallotID();  // Update the highest seen BallotID
-			} else {
-				accept = false;
-			}
+		if (msg.getRound() >= this.round && (this.maxBallotID == null || msg.getBallotID().compareTo(this.maxBallotID) > 0 )) {
+			this.maxBallotID = msg.getBallotID();
+			this.round = msg.getRound();
+		}else{
+			accept = false;
 		}
 
 		if(accept){
@@ -448,7 +448,8 @@ public class Paxos
 				msg.getBallotID(),
 				msg.getProposer(),
 				this.value,
-				this.maxBallotID
+				this.maxBallotID,
+				this.round
 		);
 		gcl.sendMsg(promiseMessage, msg.getProposer());  // Send promise to proposer
 	}
@@ -459,11 +460,13 @@ public class Paxos
 				this.maxBallotID,  // Send the current highest ballotID to proposer
 				msg.getProposer(),
 				msg.getValue(),
-				this.maxBallotID
+				this.maxBallotID,
+				this.round
 		);
 
 		gcl.sendMsg(rejectMessage, msg.getProposer());
 	}
+
 	/**
 	 * Handles the reception of an ACCEPT message in the Paxos protocol.
 	 * If the received accept message has a ballot ID matching the maxBallotID,
@@ -478,7 +481,7 @@ public class Paxos
 
 		boolean accept = true;
 		synchronized (this){
-			if (msg.getBallotID().equals(this.maxBallotID)) {
+			if (msg.getRound() == this.round && msg.getBallotID().equals(this.maxBallotID)) {
 				this.value = msg.getValue();
 			}else{
 				accept = false;
@@ -498,7 +501,8 @@ public class Paxos
 				msg.getBallotID(),
 				msg.getProposer(),
 				this.value,
-				this.maxBallotID
+				this.maxBallotID,
+				this.round
 		);
 		gcl.sendMsg(acceptAckMessage, msg.getProposer());
 	}
@@ -509,7 +513,8 @@ public class Paxos
 				this.maxBallotID,  // Send the current highest ballotID to proposer
 				msg.getProposer(),
 				null, // TODO: figure out whether we should include info when rejecting
-				this.maxBallotID
+				this.maxBallotID,
+				this.round
 		);
 		gcl.sendMsg(rejectMessage, msg.getProposer());  // Send reject message to proposer
 	}
@@ -534,8 +539,6 @@ public class Paxos
 		return moveInfo;
 	}
 
-	//TODO:
-	// Add any of your own shutdown code into this method.
 	public void shutdownPaxos()
 	{
 		isShuttingDown = true;

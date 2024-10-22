@@ -16,31 +16,24 @@ class PaxosMessage implements Serializable {
     private final MessageType type;
     private final String proposer;
     private final BallotID ballotID;
-//    private final int slot;  // The slot for this message
-
     private final BallotID acceptedBallotID; // Highest accepted ballotID for this slot
     private final Object value;
+    private final int round;
 
-//    public PaxosMessage(MessageType type, BallotID ballotID, int slot, Object value) {
-//        this(type, ballotID, slot, value, null, null);
-//    }
-//    public PaxosMessage(MessageType type, BallotID ballotID, int slot, Object value, String proposer, BallotID acceptedBallotID) {
-//        this.type = type;
-//        this.ballotID = ballotID;
-//        this.slot = slot;
-//        this.value = value;
-//        this.proposer = proposer;
-//        this.acceptedBallotID = acceptedBallotID;
-//    }
-    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value) {
-        this(type, ballotID, proposer, value, null);
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, int round) {
+        this(type, ballotID, proposer, value, null, round);
     }
-    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID) {
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID, int round) {
         this.type = type;
         this.ballotID = ballotID;
         this.value = value;
         this.proposer = proposer;
         this.acceptedBallotID = acceptedBallotID;
+        this.round = round;
+    }
+
+    public int getRound() {
+        return round;
     }
 
     public MessageType getType() {
@@ -72,7 +65,6 @@ class PaxosMessage implements Serializable {
         return "PaxosMessage{" +
                 "type=" + type +
                 ", ballotID=" + ballotID +
-//                ", slot=" + slot +
                 ", value=" + value +
                 ", proposer='" + proposer + '\'' +
                 ", acceptedBallotID=" + acceptedBallotID +

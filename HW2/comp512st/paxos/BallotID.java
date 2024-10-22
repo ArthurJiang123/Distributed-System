@@ -5,18 +5,27 @@ import java.io.Serializable;
 public class BallotID implements Serializable, Comparable<BallotID>{
 
     private static final long serialVersionUID = 1L;  // Optional but recommended for version control
-    private final int sequence;
+
+    private final int value;
+
     private final String proposer;
+    public int getValue() {
+        return value;
+    }
+
+    public String getProposer() {
+        return proposer;
+    }
 
     public BallotID(int sequence, String proposer){
-        this.sequence = sequence;
+        this.value = sequence;
         this.proposer = proposer;
     }
 
     @Override
     public int compareTo(BallotID other){
-        if(this.sequence != other.sequence){
-            return Integer.compare(this.sequence, other.sequence);
+        if(this.value != other.value){
+            return Integer.compare(this.value, other.value);
         }
 
         return this.proposer.compareTo(other.proposer);
@@ -27,16 +36,16 @@ public class BallotID implements Serializable, Comparable<BallotID>{
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         BallotID other = (BallotID) obj;
-        return sequence == other.sequence && proposer.equals(other.proposer);
+        return value == other.value && proposer.equals(other.proposer);
     }
 
     @Override
     public int hashCode() {
-        return 31 * sequence + proposer.hashCode();
+        return 31 * value + proposer.hashCode();
     }
 
     @Override
     public String toString(){
-        return String.format("(%d, %s)", sequence, proposer);
+        return String.format("(%d, %s)", value, proposer);
     }
 }

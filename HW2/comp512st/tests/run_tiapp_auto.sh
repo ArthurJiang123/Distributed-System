@@ -18,15 +18,15 @@ export autotesthost=tr-open-03.cs.mcgill.ca
 export process1=${autotesthost}:401$group
 export process2=${autotesthost}:402$group
 export process3=${autotesthost}:403$group
-#export process4=${autotesthost}:404$group
-#export process5=${autotesthost}:405$group
-#export process6=${autotesthost}:406$group
-#export process7=${autotesthost}:407$group
-#export process8=${autotesthost}:408$group
-#export process9=${autotesthost}:409$group
+export process4=${autotesthost}:404$group
+export process5=${autotesthost}:405$group
+export process6=${autotesthost}:406$group
+export process7=${autotesthost}:407$group
+export process8=${autotesthost}:408$group
+export process9=${autotesthost}:409$group
 
 #TODO update these values as needed
-maxmoves=100 interval=300 randseed=100
+maxmoves=20 interval=1200 randseed=100
 #TODO IF (and only if) you want to simulate failures, enable this for corresponding player numbers.
 #export failmode_N=RECEIVEPROPOSE
 #export failmode_N=AFTERSENDVOTE
