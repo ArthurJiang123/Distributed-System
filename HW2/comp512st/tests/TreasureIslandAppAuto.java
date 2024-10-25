@@ -41,7 +41,6 @@ public class TreasureIslandAppAuto implements Runnable
 		this.keepExploring = true;
 		this.updateDisplay = false;
 		ti = new TreasureIsland(logger, gameId, numPlayers, yourPlayer);
-
     try
     {
       String updDisplay = System.getenv("UPDATEDISPLAY");
@@ -72,7 +71,7 @@ public class TreasureIslandAppAuto implements Runnable
 				totalMovesAccepted++;
 
 				// Log the time taken for this move to be accepted
-				logger.info("Move accepted in " + (endTimeForMove - startTimeForMove) + " ms. Player: " + info[0]);
+				logger.fine("Move accepted in " + (endTimeForMove - startTimeForMove) + " ms. Player: " + info[0]);
 
 
 				move((Integer)info[0], (Character)info[1], updateDisplay);
@@ -289,9 +288,10 @@ public class TreasureIslandAppAuto implements Runnable
 		try{ Thread.sleep(10000); } catch (InterruptedException ie) { logger.log(Level.SEVERE, "I got InterruptedException when I was chilling after all my moves.", ie); }
 
 		// Log the final acceptance rate for this player
-		logger.info("Total moves accepted: " + ta.totalMovesAccepted);
-		logger.info("Total time for moves: " + ta.totalTimeForMoves + " ms");
-		logger.info("Acceptance rate: " + (double) ta.totalMovesAccepted / (ta.totalTimeForMoves / 1000.0) + " moves per second");
+		logger.fine("Total moves accepted: " + ta.totalMovesAccepted);
+		logger.fine("Total time for moves: " + ta.totalTimeForMoves + " ms");
+		logger.fine("Average time spent per move: " + (double)(ta.totalTimeForMoves/1000.0) / ta.totalMovesAccepted + " seconds per move");
+		logger.fine("Acceptance rate: " + (double) ta.totalMovesAccepted / (ta.totalTimeForMoves / 1000.0) + " moves per second");
 
 		ta.keepExploring = false;
 		ta.tiThread.join(5000); // Wait maximum 1s for the app to process any more incomming messages that was in the queue.

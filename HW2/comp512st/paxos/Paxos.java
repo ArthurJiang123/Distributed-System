@@ -110,10 +110,10 @@ public class Paxos
 		try {
 			switch (message.getType()) {
 				case PROPOSE:
-					receivePropose(message);  // 处理Propose请求
+					receivePropose(message);
 					break;
 				case ACCEPT:
-					receiveAccept(message);   // 处理Accept请求
+					receiveAccept(message);
 					break;
 				default:
 					logger.warning("Unhandled acceptor message type: " + message.getType());
@@ -138,21 +138,30 @@ public class Paxos
 
 		try {
 			proposalQueue.put(val);
+			int curRound = 0;
 
 			while (!proposalQueue.isEmpty() && !isShuttingDown) {
 
 				Object proposalValue = proposalQueue.peek();
 
-//				proposalSlot++;
-//				round++;
-				round++;
+				// if the paxos has moved to the next round( because of accepting a value)
+				// the proposal uses the latest round.
+				synchronized (this) {
+					if(!accepted){
+						this.round++;
+					}
+					if(curRound != round){
+						curRound = round;
+					}
+					proposalSlot = maxBallotID == null ? proposalSlot + 1 : maxBallotID.getValue() + 1; // Adjust proposalSlot
+				}
 
 				BallotID ballotID = new BallotID(proposalSlot, myProcess);
 				PaxosMessage proposal = new PaxosMessage(
-						PaxosMessage.MessageType.PROPOSE, ballotID, myProcess, val, round
+						PaxosMessage.MessageType.PROPOSE, ballotID, myProcess, val, curRound
 				);
 
-				logger.info("Broadcasting proposal in round: " + round + " - " + proposal);
+				logger.info("Broadcasting proposal in round: " + curRound + " - " + proposal);
 
 				// Simulate failure before broadcasting
 				failCheck.checkFailure(FailCheck.FailureType.AFTERSENDPROPOSE);
@@ -164,19 +173,14 @@ public class Paxos
 
 				gcl.broadcastMsg(proposal);
 
-				accepted = waitMajorPromises(ballotID, val, round);
+				accepted = waitMajorPromises(ballotID, val, curRound);
 
 				// if installed successfully, remove the proposal
 				// else, try again
 				if (accepted) {
 					proposalQueue.poll();
-//					round++;
-					proposalSlot++;
 				} else {
 					logger.warning("Retrying proposal: " + proposalValue);
-
-					proposalSlot = maxBallotID == null ? proposalSlot++ : maxBallotID.getValue() + 1;
-
 					clearOldMessages(ballotID);
 					Thread.sleep((long) (retryInterval * Math.random()));
 				}
@@ -211,7 +215,8 @@ public class Paxos
 		Set<PaxosMessage> rejections = new HashSet<>();
 
 		long startTime = System.currentTimeMillis();
-		long timeout = 3000;
+
+		long timeout = 3000 + allGroupProcesses.length * 100L;
 
 		try{
 			while(promises.size() <= allGroupProcesses.length/2 ){
@@ -221,12 +226,11 @@ public class Paxos
 					return false;
 				}
 
-//				PaxosMessage response = proposeResponseQueue.take(); // Block until promise is available
 				PaxosMessage response = proposeResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
 
 				if (response == null) {
 					logger.warning("Timed out while waiting for promises for ballotID: " + ballotID);
-					return false;  // Timeout handling
+					return false;
 				}
 
 				// Ignore messages that belong to an older ballot
@@ -262,7 +266,6 @@ public class Paxos
 					logger.info("At least half of the proposals were rejected for ballot ID:" + ballotID);
 					return false;
 				}
-
 			}
 		} catch (InterruptedException e) {
 			logger.severe("Interrupted while waiting for majority acceptance.");
@@ -309,11 +312,6 @@ public class Paxos
 			while(acceptAcks.size() <= allGroupProcesses.length / 2){
 
 				PaxosMessage response = acceptResponseQueue.take();
-
-//				if (System.currentTimeMillis() - startTime > timeout) {
-//					logger.warning("Timed out waiting for majority promises for ballotID: " + ballotID);
-//					return false;
-//				}
 
 				if (response.getBallotID().compareTo(ballotID) < 0) {
 					logger.info("Ignoring stale message with lower ballotID: " + response.getBallotID());
@@ -396,10 +394,8 @@ public class Paxos
 				receiveAccept(acceptMessage);
 
 			} else if (!confirmQueue.isEmpty()) {
-
 				PaxosMessage confirmMessage = confirmQueue.take();
 				confirmedMove = receiveConfirm(confirmMessage);
-
 			}
 
 			// Failure simulation after receiving value for testing
