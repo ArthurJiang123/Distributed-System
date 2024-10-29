@@ -40,6 +40,8 @@ public class Paxos
 	private Object value;
 	private final ExecutorService proposerExecutor;
 	private final ExecutorService acceptorExecutor;
+	int timeout;
+
 	public Paxos(String myProcess, String[] allGroupProcesses, Logger logger, FailCheck failCheck) throws IOException, UnknownHostException
 	{
 		// Rember to call the failCheck.checkFailure(..) with appropriate arguments throughout your Paxos code to force fail points if necessary.
@@ -54,15 +56,18 @@ public class Paxos
 
 		proposerExecutor = Executors.newFixedThreadPool(allGroupProcesses.length + 1);
 		acceptorExecutor = Executors.newFixedThreadPool(allGroupProcesses.length + 1);
+		timeout = 6000 + allGroupProcesses.length * 500;
 		new Thread(this::messageDispatcher).start();
 
 	}
 
 	private void messageDispatcher() {
+
 		while (!isShuttingDown) {
 			try {
 				PaxosMessage message = (PaxosMessage) gcl.readGCMessage().val;
 				if (isShuttingDown) break;
+
 				// If the msg is about acceptors（PROPOSE, ACCEPT
 				if (message.getType() == PaxosMessage.MessageType.PROPOSE || message.getType() == PaxosMessage.MessageType.ACCEPT) {
 					acceptorExecutor.submit(() -> handleAcceptorMessages(message));
@@ -125,10 +130,6 @@ public class Paxos
 	}
 
 	// This is what the application layer is going to call to send a message/value, such as the player and the move
-	/**
-	 * Step 1: propose (proposer)
-	 * @param val
-	 */
 	public void broadcastTOMsg(Object val)
 	{
 		// TODO:Extend this to build whatever Paxos logic you need to make sure the messaging system is total order.
@@ -165,9 +166,6 @@ public class Paxos
 
 				logger.info("Broadcasting proposal in round: " + curRound + " - " + proposal);
 
-				// Simulate failure before broadcasting
-				failCheck.checkFailure(FailCheck.FailureType.AFTERSENDPROPOSE);
-
 				if (isShuttingDown) {
 					logger.warning("Proposer can't broadcast message, system is shutting down.");
 					return;
@@ -175,6 +173,8 @@ public class Paxos
 
 				gcl.broadcastMsg(proposal);
 
+				// Simulate failure before broadcasting
+				failCheck.checkFailure(FailCheck.FailureType.AFTERSENDPROPOSE);
 				if (isShuttingDown) return;
 
 				accepted = waitMajorPromises(ballotID, val, curRound);
@@ -230,10 +230,8 @@ public class Paxos
 
 		long startTime = System.currentTimeMillis();
 
-		long timeout = 3000 + allGroupProcesses.length * 100L;
-
 		try{
-			while(promises.size() <= allGroupProcesses.length/2 ){
+			while(promises.size() <= allGroupProcesses.length/2 && !isShuttingDown ){
 
 				if (System.currentTimeMillis() - startTime > timeout) {
 					logger.warning("Timed out waiting for majority promises for ballotID: " + ballotID);
@@ -315,15 +313,23 @@ public class Paxos
 	 * @return
 	 */
 	private boolean waitAcceptAcks(BallotID ballotID, Object val, int round){
+		if (isShuttingDown) {
+			logger.warning("Proposer is shutting down.");
+			return false;
+		}
+
 		Set<PaxosMessage> acceptAcks = new HashSet<>();
 		Set<PaxosMessage> rejections = new HashSet<>();
 
 		long startTime = System.currentTimeMillis();
-		long timeout = 3000 + allGroupProcesses.length * 100L;
 
 		try{
 			while(acceptAcks.size() <= allGroupProcesses.length / 2 && !isShuttingDown ){
 
+				if (System.currentTimeMillis() - startTime > timeout) {
+					logger.warning("Timed out waiting for majority acceptance for ballotID: " + ballotID);
+					return false;
+				}
 				PaxosMessage response = acceptResponseQueue.poll(timeout, TimeUnit.MILLISECONDS);
 
 				if (response == null || isShuttingDown){
@@ -353,7 +359,7 @@ public class Paxos
 
 					return true;
 				} else if (rejections.size() > allGroupProcesses.length/2){
-					logger.info("At least half of accept requests werer rejected for ballotID:" + ballotID);
+					logger.info("At least half of accept requests were rejected for ballotID:" + ballotID);
 					return false;
 				}
 
@@ -414,10 +420,6 @@ public class Paxos
 				PaxosMessage confirmMessage = confirmQueue.take();
 				confirmedMove = receiveConfirm(confirmMessage);
 			}
-
-			// Failure simulation after receiving value for testing
-			failCheck.checkFailure(FailCheck.FailureType.AFTERVALUEACCEPT);
-
 		}
 		return confirmedMove;
 	}
@@ -434,6 +436,7 @@ public class Paxos
 	 */
 	private synchronized void receivePropose(PaxosMessage msg) {
 
+		failCheck.checkFailure(FailCheck.FailureType.RECEIVEPROPOSE);
 		if (isShuttingDown) {
 			logger.warning("Acceptor can't send message, system is shutting down.");
 			return;
@@ -516,6 +519,7 @@ public class Paxos
 		}else{
 			refuseValue(msg);
 		}
+		failCheck.checkFailure(FailCheck.FailureType.AFTERSENDVOTE);
 	}
 
 	private void acceptValue(PaxosMessage msg){
