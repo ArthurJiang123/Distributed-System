@@ -68,12 +68,13 @@ public class Paxos
 				PaxosMessage message = (PaxosMessage) gcl.readGCMessage().val;
 				if (isShuttingDown) break;
 
-				// If the msg is about acceptors（PROPOSE, ACCEPT
-				if (message.getType() == PaxosMessage.MessageType.PROPOSE || message.getType() == PaxosMessage.MessageType.ACCEPT) {
-					acceptorExecutor.submit(() -> handleAcceptorMessages(message));
+				// If the msg is sent to acceptors（PROPOSE, ACCEPT)
+				if (message.getType() == PaxosMessage.MessageType.PROPOSE || message.getType() == PaxosMessage.MessageType.ACCEPT
+						|| message.getType() == PaxosMessage.MessageType.CONFIRM) {
+					acceptorExecutor.submit(() -> receiveFromProposers(message));
 				} else {
-				// If the msg is about proposers（PROMISE, REJECT_PROPOSE, ACCEPT_ACK, REJECT_ACCEPT, CONFIRM
-					proposerExecutor.submit(() -> handleProposerMessages(message));
+				// If the msg is setn to proposers（PROMISE, REJECT_PROPOSE, ACCEPT_ACK, REJECT_ACCEPT, CONFIRM)
+					proposerExecutor.submit(() -> receiveFromAcceptors(message));
 				}
 			} catch (InterruptedException e) {
 				if (isShuttingDown) {
@@ -87,7 +88,7 @@ public class Paxos
 		}
 	}
 
-	private void handleProposerMessages(PaxosMessage message) {
+	private void receiveFromAcceptors(PaxosMessage message) {
 		if (isShuttingDown) return;
 
 		try {
@@ -100,9 +101,9 @@ public class Paxos
 				case REJECT_ACCEPT:
 					acceptResponseQueue.put(message);
 					break;
-				case CONFIRM:
-					confirmQueue.put(message);
-					break;
+//				case CONFIRM:
+//					confirmQueue.put(message);
+//					break;
 				default:
 					logger.warning("Unhandled proposer message type: " + message.getType());
 			}
@@ -112,14 +113,19 @@ public class Paxos
 		}
 	}
 
-	private void handleAcceptorMessages(PaxosMessage message) {
+	private void receiveFromProposers(PaxosMessage message) {
 		try {
 			switch (message.getType()) {
 				case PROPOSE:
-					receivePropose(message);
+//					receivePropose(message);
+					proposeQueue.put(message);
 					break;
 				case ACCEPT:
-					receiveAccept(message);
+//					receiveAccept(message);
+					acceptRequestQueue.put(message);
+					break;
+				case CONFIRM:
+					confirmQueue.put(message);
 					break;
 				default:
 					logger.warning("Unhandled acceptor message type: " + message.getType());
