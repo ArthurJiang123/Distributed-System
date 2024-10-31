@@ -3,6 +3,8 @@ package comp512st.paxos;
 import java.io.Serializable;
 
 class PaxosMessage implements Serializable {
+    private static final long serialVersionUID = 123456789L;
+
     public enum MessageType{
         PROPOSE, // proposal message from proposer, with a specific slot number
         PROMISE, // Acceptor's promise response -> will not accept lower ballot ids
@@ -16,7 +18,7 @@ class PaxosMessage implements Serializable {
     private final MessageType type;
     private final String proposer;
     private final BallotID ballotID;
-    private final BallotID acceptedBallotID; // Highest accepted ballotID for this slot
+    private final BallotID acceptedID; // Highest accepted ballotID for this slot
     private final Object value;
     private final int round;
 
@@ -28,7 +30,7 @@ class PaxosMessage implements Serializable {
         this.ballotID = ballotID;
         this.value = value;
         this.proposer = proposer;
-        this.acceptedBallotID = acceptedBallotID;
+        this.acceptedID = acceptedBallotID;
         this.round = round;
     }
 
@@ -56,8 +58,8 @@ class PaxosMessage implements Serializable {
         return proposer;
     }
 
-    public BallotID getAcceptedBallotID() {
-        return acceptedBallotID;
+    public BallotID getAcceptedID() {
+        return acceptedID;
     }
 
     @Override
@@ -67,7 +69,7 @@ class PaxosMessage implements Serializable {
                 ", ballotID=" + ballotID +
                 ", value=" + value +
                 ", proposer='" + proposer + '\'' +
-                ", acceptedBallotID=" + acceptedBallotID +
+                ", acceptedBallotID=" + acceptedID +
                 '}';
     }
 }
