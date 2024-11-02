@@ -20,23 +20,32 @@ class PaxosMessage implements Serializable {
     private final BallotID ballotID;
     private final BallotID acceptedID; // Highest accepted ballotID for this slot
     private final Object value;
-    private final int round;
+//    private final int round;
 
-    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, int round) {
-        this(type, ballotID, proposer, value, null, round);
+//    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, int round) {
+//        this(type, ballotID, proposer, value, null, round);
+//    }
+//    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID, int round) {
+//        this.type = type;
+//        this.ballotID = ballotID;
+//        this.value = value;
+//        this.proposer = proposer;
+//        this.acceptedID = acceptedBallotID;
+//        this.round = round;
+//    }
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value) {
+        this(type, ballotID, proposer, value, null);
     }
-    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID, int round) {
+    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID) {
         this.type = type;
         this.ballotID = ballotID;
         this.value = value;
         this.proposer = proposer;
         this.acceptedID = acceptedBallotID;
-        this.round = round;
     }
-
-    public int getRound() {
-        return round;
-    }
+//    public int getRound() {
+//        return round;
+//    }
 
     public MessageType getType() {
         return type;
@@ -46,9 +55,6 @@ class PaxosMessage implements Serializable {
         return ballotID;
     }
 
-//    public int getSlot() {
-//        return slot;
-//    }
 
     public Object getValue() {
         return value;
