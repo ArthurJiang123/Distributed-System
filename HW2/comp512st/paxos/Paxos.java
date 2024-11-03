@@ -161,6 +161,9 @@ public class Paxos
 
 		boolean accepted = false;
 
+		// Record start time
+		long startTime = System.currentTimeMillis();
+
 		try {
 			proposalQueue.put(val);
 //			int curRound = 0;
@@ -198,6 +201,12 @@ public class Paxos
 				// else, try again
 				if (accepted) {
 					proposalQueue.poll();
+
+					// Record end time and log move time
+					long endTime = System.currentTimeMillis();
+					long timeTaken = endTime - startTime;
+
+					logMoveTime(timeTaken);  // Log the time and move details
 				} else {
 					logger.warning("Retrying proposal: " + proposalValue);
 					clearOldMessages(ballotID);
@@ -573,6 +582,30 @@ public class Paxos
 		proposeResponseQueue.clear();
 		acceptResponseQueue.clear();
 		confirmQueue.clear();
+	}
+
+	private void logMoveTime(long timeTaken) {
+		// Extract player and interval information
+
+		String port = myProcess.split(":")[1];
+
+		// Get the player number
+		// Extract the third digit from the port number
+		char playerNumber = port.charAt(2); // Index 2 is the third character
+
+		// Create a file name based on the player name, process ID, and interval
+		String logFileName = "player" + "_" + playerNumber + ".log";
+
+		// Log the move with timing information
+		String logEntry = String.format("Move by %s | Time Taken: %d ms ",
+				myProcess, timeTaken);
+
+		try (FileWriter logWriter = new FileWriter(logFileName, true)) {
+			logWriter.write(logEntry + System.lineSeparator());
+			System.out.println("Log entry written: " + logEntry);  // Debug statement
+		} catch (IOException e) {
+			logger.severe("Failed to write move log: " + e.getMessage());
+		}
 	}
 }
 
