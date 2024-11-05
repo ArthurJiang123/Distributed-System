@@ -12,7 +12,7 @@ gameid=game-$group-99
 
 #TODO edit these entries to put the name of the server that you are using and the associated ports.
 # Remember to start the script from this host
-export autotesthost=tr-open-06.cs.mcgill.ca
+export autotesthost=tr-open-03.cs.mcgill.ca
 # player1 -> process 1, player 2 -> process 2, etc .. add more depending on how many players are playing.
 # Script automatically counts the variables to figure out the number of players.
 export process1=${autotesthost}:401$group
