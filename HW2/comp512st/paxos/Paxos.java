@@ -558,7 +558,7 @@ public class Paxos
 
 		try (FileWriter logWriter = new FileWriter(logFileName, true)) {
 			logWriter.write(logEntry + System.lineSeparator());
-			System.out.println("Log entry written: " + logEntry);  // Debug statement
+//			System.out.println("Log entry written: " + logEntry);  // Debug statement
 		} catch (IOException e) {
 			logger.severe("Failed to write move log: " + e.getMessage());
 		}
