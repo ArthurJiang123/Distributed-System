@@ -20,19 +20,6 @@ class PaxosMessage implements Serializable {
     private final BallotID ballotID;
     private final BallotID acceptedID; // Highest accepted ballotID for this slot
     private final Object value;
-//    private final int round;
-
-//    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, int round) {
-//        this(type, ballotID, proposer, value, null, round);
-//    }
-//    public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value, BallotID acceptedBallotID, int round) {
-//        this.type = type;
-//        this.ballotID = ballotID;
-//        this.value = value;
-//        this.proposer = proposer;
-//        this.acceptedID = acceptedBallotID;
-//        this.round = round;
-//    }
     public PaxosMessage(MessageType type, BallotID ballotID, String proposer, Object value) {
         this(type, ballotID, proposer, value, null);
     }
@@ -43,9 +30,6 @@ class PaxosMessage implements Serializable {
         this.proposer = proposer;
         this.acceptedID = acceptedBallotID;
     }
-//    public int getRound() {
-//        return round;
-//    }
 
     public MessageType getType() {
         return type;

@@ -2,9 +2,9 @@ package comp512st.paxos;
 
 import java.io.Serializable;
 
-public class BallotID implements Serializable, Comparable<BallotID>{
+class BallotID implements Serializable, Comparable<BallotID>{
 
-    private static final long serialVersionUID = 1L;  // Optional but recommended for version control
+    private static final long serialVersionUID = 1L;
 
     private final int value;
 

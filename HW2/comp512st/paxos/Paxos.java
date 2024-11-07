@@ -56,6 +56,9 @@ public class Paxos
 		new Thread(messageDispatcher).start();
 	}
 
+	/**
+	 * Listening on incoming GC messages.
+	 */
 	class MessageDispatcher implements Runnable{
 		private final ExecutorService proposerExecutor;
 		private final ExecutorService acceptorExecutor;
@@ -71,13 +74,13 @@ public class Paxos
 					if (isShuttingDown) break;
 					PaxosMessage message = (PaxosMessage) gcl.readGCMessage().val;
 
-					// If the msg is sent to acceptors（PROPOSE, ACCEPT)
+					// If the msg should be sent to acceptors（PROPOSE, ACCEPT)
 					if (message.getType() == PaxosMessage.MessageType.PROPOSE
 							|| message.getType() == PaxosMessage.MessageType.ACCEPT
 							|| message.getType() == PaxosMessage.MessageType.CONFIRM) {
 						acceptorExecutor.submit(() -> receiveFromProposers(message));
 					} else {
-						// If the msg is setn to proposers（PROMISE, REJECT_PROPOSE, ACCEPT_ACK, REJECT_ACCEPT, CONFIRM)
+						// If the msg should be sent to proposers（PROMISE, REJECT_PROPOSE, ACCEPT_ACK, REJECT_ACCEPT, CONFIRM)
 						proposerExecutor.submit(() -> receiveFromAcceptors(message));
 					}
 				} catch (InterruptedException e) {
@@ -86,7 +89,7 @@ public class Paxos
 						break;
 					} else {
 						logger.severe("Message dispatcher interrupted: " + e.getMessage());
-						Thread.currentThread().interrupt(); // Restore interrupted status
+						Thread.currentThread().interrupt();
 					}
 				}
 			}
@@ -144,8 +147,6 @@ public class Paxos
 	// This is what the application layer is going to call to send a message/value, such as the player and the move
 	public void broadcastTOMsg(Object val)
 	{
-		// TODO:Extend this to build whatever Paxos logic you need to make sure the messaging system is total order.
-		// TODO:Here you will have to ensure that the CALL BLOCKS, and is returned ONLY when a majority (and immediately upon majority) of processes have accepted the value.
 		if (isShuttingDown) return;
 
 		boolean accepted = false;
@@ -184,8 +185,8 @@ public class Paxos
 
 				accepted = propose(ballotID, val);
 
-				// if installed successfully, remove the proposal
-				// else, try again
+				// If installed successfully, remove the proposal
+				// Else, try again
 				if (accepted) {
 					proposalQueue.poll();
 
@@ -215,6 +216,12 @@ public class Paxos
 		);
 	}
 
+	/**
+	 * propose a move
+	 * @param ballotID
+	 * @param value
+	 * @return
+	 */
 	private boolean propose(BallotID ballotID, Object value){
 		Set<PaxosMessage> promises = new HashSet<>();
 		Set<PaxosMessage> rejections = new HashSet<>();
@@ -295,6 +302,12 @@ public class Paxos
 		return waitAcceptAcks(ballotID, val);
 	}
 
+	/**
+	 * wait for a majority of accept_acks from acceptors
+	 * @param ballotID
+	 * @param val
+	 * @return
+	 */
 	private boolean waitAcceptAcks(BallotID ballotID, Object val){
 		if (isShuttingDown) {
 			logger.warning("Proposer is shutting down.");
@@ -357,6 +370,11 @@ public class Paxos
 		return false;
 	}
 
+	/**
+	 * Send confirmation messages to acceptors
+	 * @param ballotID
+	 * @param val
+	 */
 	private void sendConfirm(BallotID ballotID, Object val) {
 		PaxosMessage confirmMessage = new PaxosMessage(
 				PaxosMessage.MessageType.CONFIRM, ballotID, myProcess, val
@@ -377,7 +395,7 @@ public class Paxos
 		long startTime = System.currentTimeMillis();
 		// listens for confirmQueue
 		// before timeout, if a confirmation appears in the queue, it will be processed
-		// after timeout, it will retry
+		// after timeout, it will reset the value variable and retry
 		while (confirmedMove == null && !isShuttingDown) {
 
 			synchronized (this){
@@ -400,6 +418,10 @@ public class Paxos
 		return confirmedMove;
 	}
 
+	/**
+	 * Upon receiving a proposal from a proposer
+	 * @param msg
+	 */
 	private void receivePropose(PaxosMessage msg) {
 
 		failCheck.checkFailure(FailCheck.FailureType.RECEIVEPROPOSE);
@@ -441,7 +463,6 @@ public class Paxos
 			}
 			gcl.sendMsg(promiseMessage, msg.getProposer());
 		}else{
-			// Incoming BallotID is smaller, reject it
 			PaxosMessage rejectMessage = new PaxosMessage(
 					PaxosMessage.MessageType.REJECT_PROPOSE,
 					msg.getBallotID(),  // Send the original ballotID to proposer
@@ -457,6 +478,11 @@ public class Paxos
 			gcl.sendMsg(rejectMessage, msg.getProposer());
 		}
 	}
+
+	/**
+	 * Upon receiving an accept request from a proposer
+	 * @param msg
+	 */
 	private void receiveAccept(PaxosMessage msg) {
 
 		if (isShuttingDown) {
@@ -509,6 +535,11 @@ public class Paxos
 		failCheck.checkFailure(FailCheck.FailureType.AFTERSENDVOTE);
 	}
 
+	/**
+	 * Upon receiving a confirmation message from a proposer
+	 * @param msg
+	 * @return
+	 */
 	private synchronized Object[] receiveConfirm(PaxosMessage msg) {
 		Object[] moveInfo = (Object[]) msg.getValue(); // moveInfo contains [playerNum, direction]
 
@@ -528,7 +559,7 @@ public class Paxos
 		gcl.shutdownGCL();
 		messageDispatcher.shutdown();
 
-		// give time to dispatcher to stop
+		// time for dispatcher to stop
 		try{
 			Thread.sleep(600);
 		} catch (InterruptedException e){
@@ -542,14 +573,12 @@ public class Paxos
 
 	private void logMoveTime(long timeTaken) {
 		// Extract player and interval information
-
 		String port = myProcess.split(":")[1];
 
 		// Get the player number
 		// Extract the third digit from the port number
 		char playerNumber = port.charAt(2); // Index 2 is the third character
 
-		// Create a file name based on the player name, process ID, and interval
 		String logFileName = "player" + "_" + playerNumber + ".log";
 
 		// Log the move with timing information
@@ -558,7 +587,7 @@ public class Paxos
 
 		try (FileWriter logWriter = new FileWriter(logFileName, true)) {
 			logWriter.write(logEntry + System.lineSeparator());
-//			System.out.println("Log entry written: " + logEntry);  // Debug statement
+//			System.out.println("Log entry written: " + logEntry);
 		} catch (IOException e) {
 			logger.severe("Failed to write move log: " + e.getMessage());
 		}
