@@ -5,7 +5,7 @@ import java.io.Serializable;
 class PaxosMessage implements Serializable {
     private static final long serialVersionUID = 123456789L;
 
-    public enum MessageType{
+    enum MessageType{
         PROPOSE, // proposal message from proposer, with a specific slot number
         PROMISE, // Acceptor's promise response -> will not accept lower ballot ids
         ACCEPT, // Proposer requesting acceptors (for a value)
