@@ -1,0 +1,9 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+../apache-zookeeper-3.8.4-bin
+../apache-zookeeper-3.8.4-bin.tar.gz
+../*.sh
+../*.tar.gz
+../*.zip
+../.DS_Store
