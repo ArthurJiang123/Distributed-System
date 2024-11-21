@@ -32,8 +32,6 @@ bin/
 /apache-zookeeper-3.8.4-bin
 /apache-zookeeper-3.8.4-bin.tar.gz
 ### scripts and zips###
-/zk/clnt/*.sh
-/zk/dist/*.sh
-/zk/task/*.sh
+**/*.sh
 /*.tar.gz
 /*.zip

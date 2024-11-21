@@ -3,7 +3,7 @@
 /workspace.xml
 ../apache-zookeeper-3.8.4-bin
 ../apache-zookeeper-3.8.4-bin.tar.gz
-../*.sh
+../zk/clnt/*.sh
 ../*.tar.gz
 ../*.zip
 ../.DS_Store
