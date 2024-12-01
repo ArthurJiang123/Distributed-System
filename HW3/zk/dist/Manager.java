@@ -6,9 +6,9 @@ import java.util.*;
 public class Manager extends DistProcess{
 
     // each task: task-taskid
-    private final Queue<String> taskQueue = new LinkedList<>();
+    private final Queue<String> unassignedTasks = new LinkedList<>();
     // each task: task-taskid
-    private final Set<String> assignedTasks = Collections.synchronizedSet(new HashSet<>());
+    private final Set<String> allTasks = Collections.synchronizedSet(new HashSet<>());
 
     // each worker: worker-id
     private final Set<String> idleWorkers = Collections.synchronizedSet(new HashSet<>());
@@ -46,37 +46,6 @@ public class Manager extends DistProcess{
             zk.create("/dist31/workers", null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
             System.out.println("DISTAPP: Created /dist31/tasks node.");
 
-        }
-    }
-
-    /**
-     * Callback for handling worker state updates.
-     */
-    private class WorkerStateCallback implements AsyncCallback.DataCallback {
-        private final String worker;
-
-        public WorkerStateCallback(String worker) {
-            this.worker = worker;
-        }
-
-        @Override
-        public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
-            if (rc == KeeperException.Code.OK.intValue()) {
-                String state = new String(data);
-
-                // we only need to re-track "idle" states because we want to reuse idle workers.
-                // Workers (who become "busy") are already assigned a task
-                // and are already removed from the idleWorkers
-                if ("idle".equals(state)) {
-                    idleWorkers.add(worker); // Add worker to idleWorkers
-                    System.out.println("DISTAPP: Worker " + worker + " is idle. Updated idleWorkers set: " + idleWorkers);
-                    System.out.println("DISTAPP: Preparing to assign tasks to idle workers.");
-                    assignTasks();
-
-                }
-            } else {
-                System.out.println("DISTAPP: Failed to fetch state for worker " + worker + ": " + rc);
-            }
         }
     }
     /**
@@ -137,7 +106,27 @@ public class Manager extends DistProcess{
                         }
                     }
                 },
-                new WorkerStateCallback(worker),
+                new AsyncCallback.DataCallback(){
+                    @Override
+                    public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
+                        if (rc == KeeperException.Code.OK.intValue()) {
+                            String state = new String(data);
+
+                            // we only need to re-track "idle" states because we want to reuse idle workers.
+                            // Workers (who become "busy") are already assigned a task
+                            // and are already removed from the idleWorkers
+                            if ("idle".equals(state)) {
+                                idleWorkers.add(worker);
+                                System.out.println("DISTAPP: Worker " + worker + " is idle. Updated idleWorkers set: " + idleWorkers);
+                                System.out.println("DISTAPP: Preparing to assign tasks to idle workers.");
+                                assignTasks();
+
+                            }
+                        } else {
+                            System.out.println("DISTAPP: Failed to fetch state for worker " + worker + ": " + rc);
+                        }
+                    }
+                },
                 null
         );
     }
@@ -153,19 +142,15 @@ public class Manager extends DistProcess{
                     }
                 },
                 new AsyncCallback.ChildrenCallback() {
-                    // enqueue only unprocessed tasks (also add to the assignedTasks set)
+                    // enqueue only unprocessed tasks (also add to the allTasks set)
                     @Override
                     public void processResult(int rc, String path, Object ctx, List<String> children) {
                         if (rc == KeeperException.Code.OK.intValue()) {
                             for (String child : children) {
-                                // add synchronization for current exec of threads
-                                synchronized (Manager.this){
-                                    // child: task-<task-id>
-                                    if (!assignedTasks.contains(child)) {
-                                        taskQueue.add(child);
-                                        assignedTasks.add(child);
-                                        System.out.println("DISTAPP: Task " + child + " added to the queue.");
-                                    }
+                                if (!allTasks.contains(child)) {
+                                    unassignedTasks.add(child);
+                                    allTasks.add(child);
+                                    System.out.println("DISTAPP: Task " + child + " added to the queue.");
                                 }
                             }
                             assignTasks();
@@ -180,14 +165,10 @@ public class Manager extends DistProcess{
     }
 
     /**
-     * NOTE: if task queue is not empty and there are idle workers,
-     * then we create a task node: /dist31/workers/{workerNode}/{taskNode}
+     * If unassigned task queue is not empty and there are idle workers,
+     * then we create a task node: /dist31/workers/{workerNode}/{taskNode}.
      * The purpose of the task node is to trigger a worker's callback
      * so that the worker is aware of a new task assignment.
-     *
-     * synchronized: since zookeeper uses a pool of threads for callbacks,
-     * we need synchronization so that access to worker queues
-     * is clearly linearized
      */
     private void assignTasks(){
 
@@ -198,25 +179,23 @@ public class Manager extends DistProcess{
             // task name: task-id
             String task;
 
-            synchronized (Manager.this){
-                if (taskQueue.isEmpty() || idleWorkers.isEmpty()) {
-                    System.out.println("DISTAPP: No tasks or idle workers available. Stopping assignment.");
-                    return;
-                }
-                worker = idleWorkers.iterator().next();
-                task = taskQueue.poll();
-
-                idleWorkers.remove(worker);
-                System.out.println("DISTAPP: Assigning task " + task + " to worker " + worker);
+            if (unassignedTasks.isEmpty() || idleWorkers.isEmpty()) {
+                System.out.println("DISTAPP: No tasks or idle workers available. Stopping assignment.");
+                return;
             }
+
+            worker = idleWorkers.iterator().next();
+            task = unassignedTasks.poll();
+
+            idleWorkers.remove(worker);
+            System.out.println("DISTAPP: Assigning task " + task + " to worker " + worker);
 
             try{
                 String workerTaskPath = "/dist31/workers/" + worker + "/" + task;
 
-                // TODO: think about if the mode should be persistent or not
                 zk.create(
                         workerTaskPath,
-                        task.getBytes(),
+                        "".getBytes(),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
                         CreateMode.EPHEMERAL // disappears if the worker disconnects
                 );
@@ -227,7 +206,7 @@ public class Manager extends DistProcess{
             } catch (KeeperException | InterruptedException e) {
                 System.err.println("DISTAPP: Task assignment failed: " + e.getMessage());
             }
-            if (!taskQueue.isEmpty()) {
+            if (!unassignedTasks.isEmpty()) {
                 System.out.println("DISTAPP: No idle workers available. Waiting for a worker to become idle.");
             }
         }

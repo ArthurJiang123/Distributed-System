@@ -9,6 +9,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Worker extends DistProcess{
 
@@ -16,6 +18,7 @@ public class Worker extends DistProcess{
     private String workerNode;
     private final Set<String> processedTasks = Collections.synchronizedSet(new HashSet<>());
 
+    private final ExecutorService executorService = Executors.newFixedThreadPool(3);
 
     public Worker(String zkServer, ZooKeeper zk){
         super(zkServer);
@@ -31,7 +34,6 @@ public class Worker extends DistProcess{
     @Override
     protected void initialize(){
         try{
-//            workerNode =  zk.create("/dist31/workers/worker-", "idle".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL_SEQUENTIAL);
             workerNode =  zk.create("/dist31/workers/worker-", "idle".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
 
             System.out.println("DISTAPP: Worker node created: " + workerNode);
@@ -66,15 +68,13 @@ public class Worker extends DistProcess{
                     @Override
                     public void processResult(int rc, String path, Object ctx, List<String> children) {
                         if (rc == KeeperException.Code.OK.intValue() && !children.isEmpty()){
-                            synchronized (processedTasks){
-                                for (String taskNode : children) {
-                                    // Skip already-processed tasks
-                                    // the string of the task : {taskNode}
-                                    if (!processedTasks.contains(taskNode)) {
-                                        processedTasks.add(taskNode);
-                                        System.out.println("DISTAPP: New task detected: " + taskNode + " for worker: " + workerNode);
-                                        processTask(taskNode);
-                                    }
+                            for (String taskNode : children) {
+                                // Skip already-processed tasks
+                                // the string of the task : {taskNode}
+                                if (!processedTasks.contains(taskNode)) {
+                                    processedTasks.add(taskNode);
+                                    System.out.println("DISTAPP: New task detected: " + taskNode + " for worker: " + workerNode);
+                                    processTask(taskNode);
                                 }
                             }
                         }else if (rc == KeeperException.Code.OK.intValue()) {
@@ -114,6 +114,7 @@ public class Worker extends DistProcess{
                                     if (rc == KeeperException.Code.OK.intValue()) {
                                         System.out.println("DISTAPP: Task data fetched for task: " + taskNode);
                                         handleTaskData(taskNode, data);
+
                                     } else {
                                         System.out.println("DISTAPP: Failed to fetch task data for " + taskNode + ": " + rc);
                                     }
@@ -135,7 +136,7 @@ public class Worker extends DistProcess{
      * @param data The serialized task data.
      */
     private void handleTaskData(String taskNode, byte[] data){
-        new Thread(() -> {
+        executorService.submit(() -> {
             try {
                 // Deserialize the task
                 System.out.println("DISTAPP: Start processing task: " + taskNode);
@@ -172,7 +173,7 @@ public class Worker extends DistProcess{
             } catch (Exception e) {
                 System.out.println("DISTAPP: Task handling failed: " + e.getMessage());
             }
-        }).start();
+        } );
     }
 
     void cleanup() {
@@ -193,6 +194,5 @@ public class Worker extends DistProcess{
             System.err.println("DISTAPP: Failed to delete worker node or its children: " + e.getMessage());
         }
     }
-
 
 }

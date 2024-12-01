@@ -92,15 +92,11 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("DISTAPP: Shutdown hook triggered.");
             if (!dt.isManager) {
-                Worker worker = new Worker(dt.zkServer, dt.zk);
-                worker.cleanup();
+                dt.worker.cleanup();
             } else {
                 System.out.println("DISTAPP: Manager does not require explicit cleanup in this implementation.");
             }
         }));
-
-        //Replace this with an approach that will make sure that the process is up and running forever.
-//        Thread.sleep(30000);
 
         // Keep the process running
         synchronized (dt) {
