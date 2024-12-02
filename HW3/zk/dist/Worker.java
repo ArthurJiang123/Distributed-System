@@ -27,7 +27,7 @@ public class Worker extends DistProcess{
 
     /**
      * Upon creation of a worker:
-     * - Creates an ephemeral sequential node in /dist31/workers.
+     * - Creates a persistent sequential node under /dist31/workers.
      * - Sets data for the worker node to "idle".
      * - Calls `watchTasks` to monitor incoming tasks.
      */
@@ -47,7 +47,7 @@ public class Worker extends DistProcess{
     }
 
     /**
-     * Watches for tasks assigned to this worker's node.
+     * Watches for new tasks to be assigned to this worker's node.
      * Re-installs the watcher after changes are detected.
      */
     private void watchTasks(){
@@ -89,8 +89,8 @@ public class Worker extends DistProcess{
     }
 
     /**
-     * Fetches data for the assigned task and processes it.
-     * we fetch actual task data from /dist31/tasks/{taskNode}
+     * Fetches data for the assigned task and processes it in another thread.
+     * We fetch the actual task data from /dist31/tasks/{taskNode}
      * @param taskNode The name of the task node.
      */
     private void processTask(String taskNode){
@@ -164,7 +164,7 @@ public class Worker extends DistProcess{
                         CreateMode.PERSISTENT
                 );
 
-                // Mark the worker as idle asynchronously
+                // Mark the worker state as idle
                 zk.setData(workerNode, "idle".getBytes(), -1);
 
                 System.out.println("DISTAPP: Task " + taskNode + " completed and result saved.");
@@ -176,6 +176,10 @@ public class Worker extends DistProcess{
         } );
     }
 
+    /**
+     * cleaning up the worker node recursively.
+     * used for testing consecutively.
+     */
     void cleanup() {
         try {
             if (workerNode != null) {
@@ -194,5 +198,4 @@ public class Worker extends DistProcess{
             System.err.println("DISTAPP: Failed to delete worker node or its children: " + e.getMessage());
         }
     }
-
 }

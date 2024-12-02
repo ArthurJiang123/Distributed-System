@@ -78,7 +78,6 @@ public class Manager extends DistProcess{
                                     System.out.println("DISTAPP: Found new worker " + worker + ". Watching its state.");
                                 }
                             }
-//                            assignTasks();
                         } else {
                             System.err.println("Failed to fetch workers: " + rc);
                         }
@@ -112,7 +111,7 @@ public class Manager extends DistProcess{
                         if (rc == KeeperException.Code.OK.intValue()) {
                             String state = new String(data);
 
-                            // we only need to re-track "idle" states because we want to reuse idle workers.
+                            // we only need to re-track "idle" states because we only want to reuse idle workers.
                             // Workers (who become "busy") are already assigned a task
                             // and are already removed from the idleWorkers
                             if ("idle".equals(state)) {
@@ -142,7 +141,7 @@ public class Manager extends DistProcess{
                     }
                 },
                 new AsyncCallback.ChildrenCallback() {
-                    // enqueue only unprocessed tasks (also add to the allTasks set)
+                    // add only unprocessed tasks (also add to the allTasks set)
                     @Override
                     public void processResult(int rc, String path, Object ctx, List<String> children) {
                         if (rc == KeeperException.Code.OK.intValue()) {
@@ -165,7 +164,7 @@ public class Manager extends DistProcess{
     }
 
     /**
-     * If unassigned task queue is not empty and there are idle workers,
+     * If unassigned task set is not empty and there are idle workers,
      * then we create a task node: /dist31/workers/{workerNode}/{taskNode}.
      * The purpose of the task node is to trigger a worker's callback
      * so that the worker is aware of a new task assignment.
@@ -197,7 +196,7 @@ public class Manager extends DistProcess{
                         workerTaskPath,
                         "".getBytes(),
                         ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                        CreateMode.EPHEMERAL // disappears if the worker disconnects
+                        CreateMode.EPHEMERAL
                 );
 
                 System.out.println("DISTAPP: Manager assigned task " + task + " to worker " + worker);

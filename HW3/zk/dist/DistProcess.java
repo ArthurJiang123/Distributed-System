@@ -48,7 +48,7 @@ public class DistProcess implements Watcher, AsyncCallback.ChildrenCallback
             worker = new Worker(zkServer, zk);
             worker.initialize();
 
-        } // TODO: What else will you need if this was a worker process?
+        }
         catch(UnknownHostException | InterruptedException | KeeperException uhe) {
             System.out.println(uhe);
         }
